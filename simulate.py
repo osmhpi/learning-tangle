@@ -3,11 +3,12 @@ import collections
 import numpy as np
 import tensorflow as tf
 
+import tensorflow.keras.backend as K
+
 import networkx as nx
 import matplotlib.pyplot as plt
 
 from multiprocessing.dummy import Pool
-from itertools import starmap
 
 from tensorflow_federated import python as tff
 
@@ -16,7 +17,7 @@ BATCH_SIZE = 20
 SHUFFLE_BUFFER = 500
 BATCHES_PER_ROUND = 100
 
-NUM_CLIENTS = 5
+NUM_CLIENTS = 10
 
 ALPHA = 0.2
 
@@ -135,7 +136,6 @@ class Tangle:
         return selector.tip_selection()
 
     def add_transaction(self, tip):
-        print("Adding tip")
         self.transactions.append(tip)
 
     def show(self):
@@ -221,23 +221,22 @@ class Model:
 
 class Node:
     def __init__(self, tangle):
-        self.model = Model()
+        self.weights = Model().get_weights()
         self.tangle = tangle
 
     def process_next_batch(self, data):
         # Obtain two tips from the tangle
         tip1, tip2 = self.tangle.choose_tips()
-        print(f"Got tips with heights {tip1.height} and {tip2.height}")
 
         # Perform averaging
         averaged_model = Model(tip1.weights).average(Model(tip2.weights))
 
         averaged_model.train(data)
 
-        if averaged_model.performs_better_than(self.model, data):
-            self.model = averaged_model
+        if averaged_model.performs_better_than(Model(self.weights), data):
+            self.weights = averaged_model.get_weights()
 
-            return Transaction(self.model.get_weights(), tip1, tip2)
+            return Transaction(self.weights, tip1, tip2)
 
         return None
 
@@ -250,24 +249,21 @@ if __name__ == '__main__':
     tangle = Tangle(Transaction(Model().get_weights(), None, None))
 
     # Create clients
-    sample_clients = emnist_train.client_ids[0:NUM_CLIENTS]
-    sample_datasets = [emnist_test.create_tf_dataset_for_client(x) for x in sample_clients]
-    nodes = [Node(tangle) for x in sample_clients]
+    nodes = [Node(tangle) for x in range(NUM_CLIENTS)]
 
     for _ in range(10):
-        def process_next_batch(node, data):
-            return node.process_next_batch(data)
+        def process_next_batch(node, i):
+            with tf.Session(graph=tf.Graph()) as sess:
+                K.set_session(sess)
+                client_id = emnist_train.client_ids[i]
+                dataset = emnist_test.create_tf_dataset_for_client(client_id)
+                return node.process_next_batch(dataset)
 
-        new_transactions = list(starmap(process_next_batch, [(nodes[i], sample_datasets[i]) for i in range(NUM_CLIENTS)]))
-        for t in new_transactions:
-            if t is not None:
-                tangle.add_transaction(t)
+        with Pool(NUM_CLIENTS) as p:
+            new_transactions = p.starmap(process_next_batch, [(nodes[i], i) for i in range(NUM_CLIENTS)])
 
-        # with Pool(NUM_CLIENTS) as p:
-        #     new_transactions = p.starmap(process_next_batch, [(nodes[i], sample_datasets[i]) for i in range(NUM_CLIENTS)])
-        #
-        #     for t in new_transactions:
-        #         if t is not None:
-        #             tangle.add_transaction(t)
+            for t in new_transactions:
+                if t is not None:
+                    tangle.add_transaction(t)
 
         tangle.show()
