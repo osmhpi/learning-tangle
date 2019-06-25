@@ -1,4 +1,5 @@
 import collections
+import json
 
 import numpy as np
 import tensorflow as tf
@@ -19,7 +20,8 @@ BATCHES_PER_ROUND = 100
 
 NUM_CLIENTS = 10
 
-ALPHA = 0.2
+# https://docs.iota.org/docs/iri/0.1/references/iri-configuration-options#alpha
+ALPHA = 0.001
 
 
 class TipSelector:
@@ -27,6 +29,9 @@ class TipSelector:
         self.tangle = tangle
 
     def tip_selection(self):
+        # https://docs.iota.org/docs/the-tangle/0.1/concepts/tip-selection
+
+        # The docs say entry_point = latestSolidMilestone - depth. Ignoring these concepts for now.
         entry_point = self.tangle.genesis
 
         entry_point_trunk = entry_point
@@ -42,6 +47,7 @@ class TipSelector:
 
         ratings = self.calculate_cumulative_weight(approving_transactions)
 
+        # TODO: I don't understand the difference between trunk and branch
         trunk = self.walk(entry_point_trunk, ratings, approving_transactions)
         branch = self.walk(entry_point_branch, ratings, approving_transactions)
 
@@ -155,6 +161,16 @@ class Tangle:
         nx.draw_networkx_edges(graph, pos, edgelist=graph.edges(), arrows=False)
         plt.show()
 
+    def save(self, sequence_no):
+        n = [{'id': id(x), 'label': x.height} for x in self.transactions]
+        edges = [
+            *[{'source': id(x), 'target': id(x.p1)} for x in self.transactions if x.p1 is not None],
+            *[{'source': id(x), 'target': id(x.p2)} for x in self.transactions if x.p2 is not None]
+        ]
+
+        with open(f'tangle_{sequence_no}.json', 'w') as outfile:
+            json.dump({'nodes': n, 'links': edges}, outfile)
+
 
 class Model:
     def __init__(self, weights=None):
@@ -251,7 +267,7 @@ if __name__ == '__main__':
     # Create clients
     nodes = [Node(tangle) for x in range(NUM_CLIENTS)]
 
-    for _ in range(10):
+    for rnd in range(10):
         def process_next_batch(node, i):
             with tf.Session(graph=tf.Graph()) as sess:
                 K.set_session(sess)
@@ -267,3 +283,4 @@ if __name__ == '__main__':
                     tangle.add_transaction(t)
 
         tangle.show()
+        tangle.save(rnd)
