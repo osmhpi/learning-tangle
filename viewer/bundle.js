@@ -8865,32 +8865,6 @@ window.addEventListener('load', function () {
             null,
             'Iota Tangle Visualization'
           )
-        ),
-        _react2.default.createElement(
-          'div',
-          { className: 'right-title' },
-          _react2.default.createElement(
-            'p',
-            null,
-            'This demo shows the tangle structure behind Iota, as described in the ',
-            _react2.default.createElement(
-              'a',
-              { href: 'https://iota.org/IOTA_Whitepaper.pdf' },
-              'white paper'
-            ),
-            '.'
-          ),
-          _react2.default.createElement(
-            'p',
-            null,
-            'The source code can be found on ',
-            _react2.default.createElement(
-              'a',
-              { href: 'https://github.com/iotaledger/iotavisualization' },
-              'github'
-            ),
-            '.'
-          )
         )
       ),
       _react2.default.createElement(_TangleContainer2.default, null)
@@ -16166,7 +16140,7 @@ var AsyncUpdates = 1;
   try {
     var nonExtensibleObject = Object.preventExtensions({});
     /* eslint-disable no-new */
-    
+
     /* eslint-enable no-new */
   } catch (e) {
     // TODO: Consider warning about bad polyfills
@@ -22296,7 +22270,7 @@ function setValueForProperty(node, name, value) {
   }
 
   {
-    
+
   }
 }
 
@@ -22311,7 +22285,7 @@ function setValueForAttribute(node, name, value) {
   }
 
   {
-    
+
   }
 }
 
@@ -27698,7 +27672,7 @@ function _objectWithoutProperties(obj, keys) { var target = {}; for (var i in ob
   selectorFactory, which has the signature:
 
     (dispatch, options) => (nextState, nextOwnProps) => nextFinalProps
-  
+
   connect passes its args to connectAdvanced as options, which will in turn pass them to
   selectorFactory each time a Connect component instance is instantiated or hot reloaded.
 
@@ -28155,7 +28129,7 @@ var mapDispatchToProps = function mapDispatchToProps(dispatch, ownProps) {
 
 var nodeRadiusMax = 25;
 var nodeRadiusMin = 13;
-var showLabelsMinimumRadius = 21;
+var showLabelsMinimumRadius = 15;
 var getNodeRadius = function getNodeRadius(nodeCount) {
   var smallNodeCount = 20;
   var largeNodeCount = 100;
@@ -32601,10 +32575,10 @@ var loadTangle = exports.loadTangle = async function loadTangle(_ref) {
   var links = data.links.map(function (x) {
     return {
       source: nodes.find(function (n) {
-        return n.name === x.source.toString();
+        return n.name === x.source;
       }),
       target: nodes.find(function (n) {
-        return n.name === x.target.toString();
+        return n.name === x.target;
       })
     };
   });

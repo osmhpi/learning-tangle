@@ -174,8 +174,8 @@ class Tangle:
         node_ids = {id(self.transactions[i]): i for i in range(len(self.transactions))}
         n = [{'name': f'{i}', 'time': self.transactions[i].tag} for i in range(len(self.transactions))]
         edges = [
-            *[{'source': node_ids[id(x)], 'target': node_ids[id(x.p1)]} for x in self.transactions if x.p1 is not None],
-            *[{'source': node_ids[id(x)], 'target': node_ids[id(x.p2)]} for x in self.transactions if x.p2 is not None and x.p1 != x.p2]
+            *[{'source': f'{node_ids[id(x)]}', 'target': f'{node_ids[id(x.p1)]}'} for x in self.transactions if x.p1 is not None],
+            *[{'source': f'{node_ids[id(x)]}', 'target': f'{node_ids[id(x.p2)]}'} for x in self.transactions if x.p2 is not None and x.p1 != x.p2]
         ]
 
         with open(f'viewer/tangle_{sequence_no}.json', 'w') as outfile:
