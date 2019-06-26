@@ -127,12 +127,16 @@ class Transaction:
             self.height = 1
 
         self.weights = weights
+        self.tag = None
+
+    def add_tag(self, tag):
+        self.tag = tag
 
 
 class Tangle:
-    def __init__(self, tip):
-        self.genesis = tip
-        self.transactions = [self.genesis]
+    def __init__(self, genesis):
+        self.genesis = genesis
+        self.transactions = [genesis]
 
     def choose_tips(self):
         if len(self.transactions) < 2:
@@ -162,13 +166,19 @@ class Tangle:
         plt.show()
 
     def save(self, sequence_no):
-        n = [{'id': id(x), 'label': x.height} for x in self.transactions]
+        # Mark untagged transactions with the sequence number
+        for t in self.transactions:
+            if t.tag is None:
+                t.add_tag(sequence_no + 1)  # Genesis block sequence number is 0
+
+        node_ids = {id(self.transactions[i]): i for i in range(len(self.transactions))}
+        n = [{'name': f'{i}', 'time': self.transactions[i].tag} for i in range(len(self.transactions))]
         edges = [
-            *[{'source': id(x), 'target': id(x.p1)} for x in self.transactions if x.p1 is not None],
-            *[{'source': id(x), 'target': id(x.p2)} for x in self.transactions if x.p2 is not None]
+            *[{'source': node_ids[id(x)], 'target': node_ids[id(x.p1)]} for x in self.transactions if x.p1 is not None],
+            *[{'source': node_ids[id(x)], 'target': node_ids[id(x.p2)]} for x in self.transactions if x.p2 is not None and x.p1 != x.p2]
         ]
 
-        with open(f'tangle_{sequence_no}.json', 'w') as outfile:
+        with open(f'viewer/tangle_{sequence_no}.json', 'w') as outfile:
             json.dump({'nodes': n, 'links': edges}, outfile)
 
 
@@ -263,6 +273,9 @@ if __name__ == '__main__':
 
     # Create tangle
     tangle = Tangle(Transaction(Model().get_weights(), None, None))
+
+    # For visualization purposes
+    tangle.transactions[0].add_tag(0)
 
     # Create clients
     nodes = [Node(tangle) for x in range(NUM_CLIENTS)]
