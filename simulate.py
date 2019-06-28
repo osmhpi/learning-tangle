@@ -35,7 +35,7 @@ class TipSelector:
         entry_point = self.tangle.genesis
 
         entry_point_trunk = entry_point
-        entry_point_branch = entry_point
+        entry_point_branch = entry_point  # reference or entry_point, according to the docs
 
         # Build a map of transactions that directly approve a given transaction
         approving_transactions = {x: [] for x in self.tangle.transactions}
@@ -88,9 +88,11 @@ class TipSelector:
         weights = self.ratings_to_weight(approvers_ratings)
         approver = self.weighted_choice(approvers_with_rating, weights)
 
+        # Skip validation.
+        # At least a validation of some PoW is necessary in a real-world implementation.
+
         return approver
 
-        # Skip validation
         # if approver is not None:
         #     tail = validator.findTail(approver)
         #
@@ -106,6 +108,10 @@ class TipSelector:
 
     @staticmethod
     def weighted_choice(approvers, weights):
+        # Instead of a random choice, one could also think about a more 'intelligent'
+        # variant for this use case. E.g. choose a transaction that was published by a
+        # node with 'similar' characteristics
+
         total_weight = sum(weights)
         return np.random.choice(approvers, p=[w / total_weight for w in weights])
 
@@ -138,13 +144,6 @@ class Tangle:
         self.genesis = genesis
         self.transactions = [genesis]
 
-    def choose_tips(self):
-        if len(self.transactions) < 2:
-            return tuple([self.genesis, self.genesis])
-
-        selector = TipSelector(self)
-        return selector.tip_selection()
-
     def add_transaction(self, tip):
         self.transactions.append(tip)
 
@@ -165,7 +164,7 @@ class Tangle:
         nx.draw_networkx_edges(graph, pos, edgelist=graph.edges(), arrows=False)
         plt.show()
 
-    def save(self, sequence_no):
+    def save(self, sequence_no, global_loss):
         # Mark untagged transactions with the sequence number
         for t in self.transactions:
             if t.tag is None:
@@ -174,12 +173,14 @@ class Tangle:
         node_ids = {id(self.transactions[i]): i for i in range(len(self.transactions))}
         n = [{'name': f'{i}', 'time': self.transactions[i].tag} for i in range(len(self.transactions))]
         edges = [
-            *[{'source': f'{node_ids[id(x)]}', 'target': f'{node_ids[id(x.p1)]}'} for x in self.transactions if x.p1 is not None],
-            *[{'source': f'{node_ids[id(x)]}', 'target': f'{node_ids[id(x.p2)]}'} for x in self.transactions if x.p2 is not None and x.p1 != x.p2]
+            *[{'source': f'{node_ids[id(x)]}', 'target': f'{node_ids[id(x.p1)]}'}
+              for x in self.transactions if x.p1 is not None],
+            *[{'source': f'{node_ids[id(x)]}', 'target': f'{node_ids[id(x.p2)]}'}
+              for x in self.transactions if x.p2 is not None and x.p1 != x.p2]
         ]
 
         with open(f'viewer/tangle_{sequence_no}.json', 'w') as outfile:
-            json.dump({'nodes': n, 'links': edges}, outfile)
+            json.dump({'nodes': n, 'links': edges, 'global_loss': global_loss}, outfile)
 
 
 class Model:
@@ -192,7 +193,7 @@ class Model:
         return self.model.get_weights()
 
     def average(self, other):
-        new_weights = [np.array(weights_).mean(axis=0) for weights_ in zip(*[self.get_weights(), other.get_weights()])]
+        new_weights = [np.array(weights).mean(axis=0) for weights in zip(*[self.get_weights(), other.get_weights()])]
         return Model(new_weights)
 
     @staticmethod
@@ -240,60 +241,153 @@ class Model:
     def evaluate(self, data):
         return self.model.evaluate(self.preprocess_test(data))
 
-    def performs_better_than(self, other, data):
-        # Return true if loss is less
-        return self.evaluate(data) < other.evaluate(data)
+    def performs_better_than(self, other_result, data):
+        # print(self.model.metrics_names) tells us that:
+        # self.evaluate() -> (loss, sparse_categorical_accuracy)
+        # Not sure if can ignore the sparse_categorical_accuracy here
+        return self.evaluate(data)[0] < other_result[0]
 
 
 class Node:
     def __init__(self, tangle):
-        self.weights = Model().get_weights()
         self.tangle = tangle
 
-    def process_next_batch(self, data):
+    def choose_tips(self):
+        if len(self.tangle.transactions) < 2:
+            return tuple([self.tangle.genesis, self.tangle.genesis])
+
+        selector = TipSelector(self.tangle)
+        return selector.tip_selection()
+
+    def compute_confidence(self):
+        transaction_confidence = {id(x): 0 for x in self.tangle.transactions}
+
+        def approved_transactions(transaction):
+            txns = [id(transaction)]
+            if transaction.p1 is not None:
+                txns.extend(approved_transactions(transaction.p1))
+            if transaction.p2 is not None and transaction.p1 != transaction.p2:
+                txns.extend(approved_transactions(transaction.p2))
+
+            return set(txns)
+
+        for i in range(50):
+            branch, trunk = self.choose_tips()
+            for tx in approved_transactions(branch):
+                transaction_confidence[tx] += 1
+            for tx in approved_transactions(trunk):
+                transaction_confidence[tx] += 1
+
+        return {tx: transaction_confidence[id(tx)] for tx in self.tangle.transactions}
+
+    @staticmethod
+    def compute_cumulative_score(transactions):
+        cumulative_score = {}
+
+        def compute_score(transaction):
+            if id(transaction) in cumulative_score:
+                return cumulative_score[id(transaction)]
+
+            result = 1
+            if transaction.p1 is not None:
+                result += compute_score(transaction.p1)
+            if transaction.p2 is not None and transaction.p1 != transaction.p2:
+                result += compute_score(transaction.p2)
+
+            cumulative_score[id(transaction)] = result
+            return result
+
+        for t in transactions:
+            compute_score(t)
+
+        return {tx: cumulative_score[id(tx)] for tx in transactions}
+
+    def compute_current_loss(self, data):
+        # Establish the 'current best' weights from the tangle
+
+        # 1. Perform tip selection n times, establish confidence for each transaction
+        transaction_confidence = self.compute_confidence()
+
+        # 2. Compute cumulative score for transactions with confidence greater than threshold
+        approved_transactions = [tx for tx, confidence in transaction_confidence.items() if confidence > 50]
+        if len(approved_transactions) < 50:  # Below some threshold of transactions, we cannot 'trust' the network
+            approved_transactions = [tx for tx, confidence in
+                                     sorted(transaction_confidence.items(), key=lambda kv: kv[1], reverse=True)[:5]]
+        scores = self.compute_cumulative_score(approved_transactions)
+
+        # 3. For the top n percent of scored transactions run model evaluation and choose the best
+        top_five = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]  # Sort by high score -> low score
+        best_tx = sorted(top_five, key=lambda tx: Model(tx[0].weights).evaluate(data))[0][0]
+
+        return Model(best_tx.weights).evaluate(data)
+
+    def process_next_batch(self, train_data, test_data):
+        current_loss = self.compute_current_loss(test_data)
+
         # Obtain two tips from the tangle
-        tip1, tip2 = self.tangle.choose_tips()
+        tip1, tip2 = self.choose_tips()
 
         # Perform averaging
+
+        # How averaging is done exactly (e.g. weighted, using which weights) is left to the
+        # network participants. It is not reproducible or verifiable by other nodes because
+        # only the resulting weights are published.
+        # Once a node has published its training results, it thus can't be sure if
+        # and by what weight its delta is being incorporated into approving transactions.
+        # However, assuming most nodes are well-behaved, they will make sure that eventually
+        # those weights will prevail that incorporate as many partial results as possible
+        # in order to prevent over-fitting.
+
+        # Here: simple unweighted average
         averaged_model = Model(tip1.weights).average(Model(tip2.weights))
 
-        averaged_model.train(data)
+        averaged_model.train(train_data)
 
-        if averaged_model.performs_better_than(Model(self.weights), data):
-            self.weights = averaged_model.get_weights()
+        if averaged_model.performs_better_than(current_loss, test_data):
+            return Transaction(averaged_model.get_weights(), tip1, tip2), current_loss[0]
 
-            return Transaction(self.weights, tip1, tip2)
-
-        return None
+        return None, current_loss[0]
 
 
-if __name__ == '__main__':
-    # Load test data
+def run():
     emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
 
-    # Create tangle
     tangle = Tangle(Transaction(Model().get_weights(), None, None))
 
     # For visualization purposes
     tangle.transactions[0].add_tag(0)
+    global_loss = []
 
-    # Create clients
-    nodes = [Node(tangle) for x in range(NUM_CLIENTS)]
+    nodes = [Node(tangle) for _ in range(len(emnist_train.client_ids))]
 
-    for rnd in range(10):
+    # Organize transactions in artificial 'rounds'
+    for rnd in range(15):
         def process_next_batch(node, i):
             with tf.Session(graph=tf.Graph()) as sess:
                 K.set_session(sess)
-                client_id = emnist_train.client_ids[i]
-                dataset = emnist_test.create_tf_dataset_for_client(client_id)
-                return node.process_next_batch(dataset)
+                train_data = emnist_train.create_tf_dataset_for_client(emnist_train.client_ids[i])
+                test_data = emnist_test.create_tf_dataset_for_client(emnist_test.client_ids[i])
+                return node.process_next_batch(train_data, test_data)
+
+        # In each round, a set of nodes performs a training step and potentially publishes the result as a transaction.
+        # Why would nodes continuously publish updates (in the real world)?
+        # The stability of the tangle results from a continuous stream of well-behaved updates
+        # even if they only provide a negligible improvement of the model.
+
+        selected_nodes = np.random.choice(range(len(emnist_train.client_ids)), NUM_CLIENTS, replace=False)
 
         with Pool(NUM_CLIENTS) as p:
-            new_transactions = p.starmap(process_next_batch, [(nodes[i], i) for i in range(NUM_CLIENTS)])
+            new_transactions = p.starmap(process_next_batch, [(nodes[i], i) for i in selected_nodes])
 
-            for t in new_transactions:
+            for t, _ in new_transactions:
                 if t is not None:
                     tangle.add_transaction(t)
 
+            global_loss.append(sum([loss for _, loss in new_transactions]) / len(selected_nodes))
+
         tangle.show()
-        tangle.save(rnd)
+        tangle.save(rnd, global_loss)
+
+
+if __name__ == '__main__':
+    run()
