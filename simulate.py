@@ -16,14 +16,16 @@ from multiprocessing.dummy import Pool
 from tensorflow_federated import python as tff
 
 NUM_EPOCHS = 10
-BATCH_SIZE = 20
+BATCH_SIZE = 100
 SHUFFLE_BUFFER = 500
 BATCHES_PER_ROUND = 100
 
-NUM_CLIENTS = 10
+NUM_CLIENTS = 5
 
 # https://docs.iota.org/docs/iri/0.1/references/iri-configuration-options#alpha
 ALPHA = 0.001
+
+NUM_ROUNDS = 50
 
 
 class TipSelector:
@@ -246,7 +248,7 @@ class Model:
     def performs_better_than(self, other_result, data):
         # print(self.model.metrics_names) tells us that:
         # self.evaluate() -> (loss, sparse_categorical_accuracy)
-        # Not sure if can ignore the sparse_categorical_accuracy here
+        # Not sure if we can ignore the sparse_categorical_accuracy here
         return self.evaluate(data)[0] < other_result[0]
 
 
@@ -363,7 +365,7 @@ def run():
     nodes = [Node(tangle) for _ in range(len(emnist_train.client_ids))]
 
     # Organize transactions in artificial 'rounds'
-    for rnd in range(15):
+    for rnd in range(NUM_ROUNDS):
         def process_next_batch(node, i):
             with tf.Session(graph=tf.Graph()) as sess:
                 K.set_session(sess)
