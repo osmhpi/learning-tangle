@@ -9,6 +9,7 @@ verify_ssl = true
 tensorflow-federated = "*"
 matplotlib = "*"
 networkx = "*"
+numpy = "*"
 
 [requires]
 python_version = "3.7"
