@@ -3,6 +3,7 @@
 import collections
 import json
 import itertools
+import random
 
 import numpy as np
 import tensorflow as tf
@@ -94,7 +95,7 @@ class TipSelector:
 
         approvers_ratings = [ratings[a] for a in approvers_with_rating]
         weights = self.ratings_to_weight(approvers_ratings)
-        approver = self.weighted_choice(approvers_with_rating, weights)
+        approver = self.weighted_choice_bozo(approvers_with_rating, weights)
 
         # Skip validation.
         # At least a validation of some PoW is necessary in a real-world implementation.
@@ -120,8 +121,12 @@ class TipSelector:
         # variant for this use case. E.g. choose a transaction that was published by a
         # node with 'similar' characteristics
 
-        total_weight = sum(weights)
-        return np.random.choice(approvers, p=[w / total_weight for w in weights])
+        rn = random.randint(0, sum(weights))
+        for i in range(len(approvers)):
+            rn -= weights[i]
+            if rn <= 0:
+                return approvers[i]
+        return approvers[-1]
 
     @staticmethod
     def ratings_to_weight(ratings):
@@ -292,7 +297,7 @@ class Node:
             for tx in set(approved_transactions(trunk)):
                 transaction_confidence[tx] += 1
 
-        return {tx: float(transaction_confidence[id(tx)]) / num_sampling_rounds  for tx in self.tangle.transactions}
+        return {tx: float(transaction_confidence[id(tx)]) / num_sampling_rounds for tx in self.tangle.transactions}
 
     @staticmethod
     def compute_cumulative_score(transactions):
@@ -381,7 +386,7 @@ def run():
         # with tf.Session(graph=tf.Graph()) as sess:
         #     K.set_session(sess)
 
-        print(f"Starting round {rnd+1} / {NUM_ROUNDS}")
+        print(f"Starting round {rnd + 1} / {NUM_ROUNDS}")
 
         emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
 
@@ -413,18 +418,6 @@ def run():
         # tangle.show()
         tangle.save(rnd, global_loss)
 
-def perf_run():
-    tangle = Tangle(Transaction(0, None, None))
-
-    for i in range(1000):
-        selector = TipSelector(tangle)
-
-        for i in range(100):
-            branch, trunk = selector.tip_selection()
-
-        t1, t2 = selector.tip_selection()
-        tx = Transaction(0, t1, t2)
-        tangle.add_transaction(tx)
 
 if __name__ == '__main__':
-    perf_run()
+    run()
