@@ -216,8 +216,6 @@ class Model:
         return dataset.map(element_fn).apply(
             tf.data.experimental.shuffle_and_repeat(
                 buffer_size=SHUFFLE_BUFFER, count=-1)).batch(BATCH_SIZE)
-        # return dataset.repeat(NUM_EPOCHS).map(element_fn).shuffle(
-        #     SHUFFLE_BUFFER).batch(BATCH_SIZE)
 
     @staticmethod
     def preprocess_test(dataset):
@@ -334,17 +332,14 @@ class Node:
         scores = self.compute_cumulative_score(approved_transactions)
 
         # 3. For the top n percent of scored transactions run model evaluation and choose the best
-        # print("  evaluating...")
         top_five = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]  # Sort by high score -> low score
         evaluated_tx = {tx[0]: Model(tx[0].weights).evaluate(data) for tx in top_five}
         return sorted(evaluated_tx.items(), key=lambda tx: tx[1])[0][1]
 
     def process_next_batch(self, train_data, test_data):
-        # print("determining current loss...")
         current_loss = self.compute_current_loss(test_data)
 
         # Obtain two tips from the tangle
-        # print("choosing tips...")
         tip1, tip2 = self.choose_tips()
 
         # Perform averaging
@@ -359,13 +354,10 @@ class Node:
         # in order to prevent over-fitting.
 
         # Here: simple unweighted average
-        # print("averaging...")
         averaged_model = Model(tip1.weights).average(Model(tip2.weights))
 
-        # print("training...")
         averaged_model.train(train_data)
 
-        # print("evaluating...")
         if averaged_model.performs_better_than(current_loss, test_data):
             return Transaction(averaged_model.get_weights(), tip1, tip2), current_loss[0]
 
@@ -421,6 +413,18 @@ def run():
         # tangle.show()
         tangle.save(rnd, global_loss)
 
+def perf_run():
+    tangle = Tangle(Transaction(0, None, None))
+
+    for i in range(1000):
+        selector = TipSelector(tangle)
+
+        for i in range(100):
+            branch, trunk = selector.tip_selection()
+
+        t1, t2 = selector.tip_selection()
+        tx = Transaction(0, t1, t2)
+        tangle.add_transaction(tx)
 
 if __name__ == '__main__':
-    run()
+    perf_run()
