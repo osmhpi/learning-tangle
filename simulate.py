@@ -95,7 +95,7 @@ class TipSelector:
 
         approvers_ratings = [ratings[a] for a in approvers_with_rating]
         weights = self.ratings_to_weight(approvers_ratings)
-        approver = self.weighted_choice_bozo(approvers_with_rating, weights)
+        approver = self.weighted_choice(approvers_with_rating, weights)
 
         # Skip validation.
         # At least a validation of some PoW is necessary in a real-world implementation.
@@ -121,7 +121,7 @@ class TipSelector:
         # variant for this use case. E.g. choose a transaction that was published by a
         # node with 'similar' characteristics
 
-        rn = random.randint(0, sum(weights))
+        rn = random.randint(0, int(sum(weights)))
         for i in range(len(approvers)):
             rn -= weights[i]
             if rn <= 0:
@@ -286,10 +286,8 @@ class Node:
             return result
 
         # Use a cached tip selector
-        print("initialize TS")
         selector = TipSelector(self.tangle)
 
-        print("sampling")
         for i in range(num_sampling_rounds):
             branch, trunk = self.choose_tips(selector=selector)
             for tx in set(approved_transactions(branch)):
@@ -325,7 +323,6 @@ class Node:
         # Establish the 'current best' weights from the tangle
 
         # 1. Perform tip selection n times, establish confidence for each transaction
-        print("  getting confidence...")
         transaction_confidence = self.compute_confidence()
 
         # 2. Compute cumulative score for transactions with confidence greater than threshold
@@ -333,7 +330,6 @@ class Node:
         if len(approved_transactions) < 50:  # Below some threshold of transactions, we cannot 'trust' the network
             approved_transactions = [tx for tx, confidence in
                                      sorted(transaction_confidence.items(), key=lambda kv: kv[1], reverse=True)[:5]]
-        print("  establishing scores...")
         scores = self.compute_cumulative_score(approved_transactions)
 
         # 3. For the top n percent of scored transactions run model evaluation and choose the best
@@ -383,8 +379,6 @@ def run():
 
     # Organize transactions in artificial 'rounds'
     for rnd in range(NUM_ROUNDS):
-        # with tf.Session(graph=tf.Graph()) as sess:
-        #     K.set_session(sess)
 
         print(f"Starting round {rnd + 1} / {NUM_ROUNDS}")
 
@@ -407,7 +401,6 @@ def run():
 
         with Pool(NUM_CLIENTS) as p:
             new_transactions = p.starmap(process_next_batch, [(nodes[i], i) for i in selected_nodes])
-        # new_transactions = list(itertools.starmap(process_next_batch, [(nodes[i], i) for i in selected_nodes]))
 
         for t, _ in new_transactions:
             if t is not None:
