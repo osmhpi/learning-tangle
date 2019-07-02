@@ -2,6 +2,7 @@
 
 import collections
 import json
+import itertools
 
 import numpy as np
 import tensorflow as tf
@@ -32,6 +33,16 @@ class TipSelector:
     def __init__(self, tangle):
         self.tangle = tangle
 
+        # Build a map of transactions that directly approve a given transaction
+        self.approving_transactions = {x: [] for x in self.tangle.transactions}
+        for x in self.tangle.transactions:
+            if x.p1 is not None:
+                self.approving_transactions[x.p1].append(x)
+            if x.p2 is not None and x.p1 != x.p2:
+                self.approving_transactions[x.p2].append(x)
+
+        self.ratings = self.calculate_cumulative_weight(self.approving_transactions)
+
     def tip_selection(self):
         # https://docs.iota.org/docs/the-tangle/0.1/concepts/tip-selection
 
@@ -41,19 +52,9 @@ class TipSelector:
         entry_point_trunk = entry_point
         entry_point_branch = entry_point  # reference or entry_point, according to the docs
 
-        # Build a map of transactions that directly approve a given transaction
-        approving_transactions = {x: [] for x in self.tangle.transactions}
-        for x in self.tangle.transactions:
-            if x.p1 is not None:
-                approving_transactions[x.p1].append(x)
-            if x.p2 is not None and x.p1 != x.p2:
-                approving_transactions[x.p2].append(x)
-
-        ratings = self.calculate_cumulative_weight(approving_transactions)
-
         # TODO: I don't understand the difference between trunk and branch
-        trunk = self.walk(entry_point_trunk, ratings, approving_transactions)
-        branch = self.walk(entry_point_branch, ratings, approving_transactions)
+        trunk = self.walk(entry_point_trunk, self.ratings, self.approving_transactions)
+        branch = self.walk(entry_point_branch, self.ratings, self.approving_transactions)
 
         return trunk, branch
 
@@ -65,9 +66,12 @@ class TipSelector:
         return rating
 
     def future_set(self, tx, approving_transactions):
-        direct_approvals = approving_transactions[tx]
-        indirect_approvals = [self.future_set(x, approving_transactions) for x in direct_approvals]
-        return {id(approver) for s in [direct_approvals, indirect_approvals] for approver in s}
+        def recurse_future_set(t):
+            direct_approvals = [id(x) for x in approving_transactions[t]]
+            indirect_approvals = [recurse_future_set(x) for x in approving_transactions[t]]
+            return list(itertools.chain.from_iterable([direct_approvals] + indirect_approvals))
+
+        return set(recurse_future_set(tx))
 
     def walk(self, tx, ratings, approving_transactions):
         step = tx
@@ -243,7 +247,7 @@ class Model:
         self.model.fit(self.preprocess(data), steps_per_epoch=BATCHES_PER_ROUND, epochs=NUM_EPOCHS, verbose=0)
 
     def evaluate(self, data):
-        return self.model.evaluate(self.preprocess_test(data))
+        return self.model.evaluate(self.preprocess_test(data), verbose=0)
 
     def performs_better_than(self, other_result, data):
         # print(self.model.metrics_names) tells us that:
@@ -256,33 +260,41 @@ class Node:
     def __init__(self, tangle):
         self.tangle = tangle
 
-    def choose_tips(self):
+    def choose_tips(self, selector=None):
         if len(self.tangle.transactions) < 2:
             return tuple([self.tangle.genesis, self.tangle.genesis])
 
-        selector = TipSelector(self.tangle)
+        if selector is None:
+            selector = TipSelector(self.tangle)
         return selector.tip_selection()
 
     def compute_confidence(self):
+        num_sampling_rounds = 10
+
         transaction_confidence = {id(x): 0 for x in self.tangle.transactions}
 
         def approved_transactions(transaction):
-            txns = [id(transaction)]
+            result = [id(transaction)]
             if transaction.p1 is not None:
-                txns.extend(approved_transactions(transaction.p1))
+                result += approved_transactions(transaction.p1)
             if transaction.p2 is not None and transaction.p1 != transaction.p2:
-                txns.extend(approved_transactions(transaction.p2))
+                result += approved_transactions(transaction.p2)
 
-            return set(txns)
+            return result
 
-        for i in range(50):
-            branch, trunk = self.choose_tips()
-            for tx in approved_transactions(branch):
+        # Use a cached tip selector
+        print("initialize TS")
+        selector = TipSelector(self.tangle)
+
+        print("sampling")
+        for i in range(num_sampling_rounds):
+            branch, trunk = self.choose_tips(selector=selector)
+            for tx in set(approved_transactions(branch)):
                 transaction_confidence[tx] += 1
-            for tx in approved_transactions(trunk):
+            for tx in set(approved_transactions(trunk)):
                 transaction_confidence[tx] += 1
 
-        return {tx: transaction_confidence[id(tx)] for tx in self.tangle.transactions}
+        return {tx: float(transaction_confidence[id(tx)]) / num_sampling_rounds  for tx in self.tangle.transactions}
 
     @staticmethod
     def compute_cumulative_score(transactions):
@@ -310,25 +322,29 @@ class Node:
         # Establish the 'current best' weights from the tangle
 
         # 1. Perform tip selection n times, establish confidence for each transaction
+        print("  getting confidence...")
         transaction_confidence = self.compute_confidence()
 
         # 2. Compute cumulative score for transactions with confidence greater than threshold
-        approved_transactions = [tx for tx, confidence in transaction_confidence.items() if confidence > 50]
+        approved_transactions = [tx for tx, confidence in transaction_confidence.items() if confidence >= 0.5]
         if len(approved_transactions) < 50:  # Below some threshold of transactions, we cannot 'trust' the network
             approved_transactions = [tx for tx, confidence in
                                      sorted(transaction_confidence.items(), key=lambda kv: kv[1], reverse=True)[:5]]
+        print("  establishing scores...")
         scores = self.compute_cumulative_score(approved_transactions)
 
         # 3. For the top n percent of scored transactions run model evaluation and choose the best
+        # print("  evaluating...")
         top_five = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]  # Sort by high score -> low score
-        best_tx = sorted(top_five, key=lambda tx: Model(tx[0].weights).evaluate(data))[0][0]
-
-        return Model(best_tx.weights).evaluate(data)
+        evaluated_tx = {tx[0]: Model(tx[0].weights).evaluate(data) for tx in top_five}
+        return sorted(evaluated_tx.items(), key=lambda tx: tx[1])[0][1]
 
     def process_next_batch(self, train_data, test_data):
+        # print("determining current loss...")
         current_loss = self.compute_current_loss(test_data)
 
         # Obtain two tips from the tangle
+        # print("choosing tips...")
         tip1, tip2 = self.choose_tips()
 
         # Perform averaging
@@ -343,10 +359,13 @@ class Node:
         # in order to prevent over-fitting.
 
         # Here: simple unweighted average
+        # print("averaging...")
         averaged_model = Model(tip1.weights).average(Model(tip2.weights))
 
+        # print("training...")
         averaged_model.train(train_data)
 
+        # print("evaluating...")
         if averaged_model.performs_better_than(current_loss, test_data):
             return Transaction(averaged_model.get_weights(), tip1, tip2), current_loss[0]
 
@@ -354,21 +373,30 @@ class Node:
 
 
 def run():
-    emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
-
     tangle = Tangle(Transaction(Model().get_weights(), None, None))
 
     # For visualization purposes
     tangle.transactions[0].add_tag(0)
     global_loss = []
 
-    nodes = [Node(tangle) for _ in range(len(emnist_train.client_ids))]
+    with tf.Session(graph=tf.Graph()) as sess:
+        K.set_session(sess)
+        emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
+        nodes = [Node(tangle) for _ in range(len(emnist_train.client_ids))]
 
     # Organize transactions in artificial 'rounds'
     for rnd in range(NUM_ROUNDS):
+        # with tf.Session(graph=tf.Graph()) as sess:
+        #     K.set_session(sess)
+
+        print(f"Starting round {rnd+1} / {NUM_ROUNDS}")
+
+        emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
+
         def process_next_batch(node, i):
             with tf.Session(graph=tf.Graph()) as sess:
                 K.set_session(sess)
+
                 train_data = emnist_train.create_tf_dataset_for_client(emnist_train.client_ids[i])
                 test_data = emnist_test.create_tf_dataset_for_client(emnist_test.client_ids[i])
                 return node.process_next_batch(train_data, test_data)
@@ -382,14 +410,15 @@ def run():
 
         with Pool(NUM_CLIENTS) as p:
             new_transactions = p.starmap(process_next_batch, [(nodes[i], i) for i in selected_nodes])
+        # new_transactions = list(itertools.starmap(process_next_batch, [(nodes[i], i) for i in selected_nodes]))
 
-            for t, _ in new_transactions:
-                if t is not None:
-                    tangle.add_transaction(t)
+        for t, _ in new_transactions:
+            if t is not None:
+                tangle.add_transaction(t)
 
-            global_loss.append(sum([loss for _, loss in new_transactions]) / len(selected_nodes))
+        global_loss.append(sum([loss for _, loss in new_transactions]) / len(selected_nodes))
 
-        tangle.show()
+        # tangle.show()
         tangle.save(rnd, global_loss)
 
 

@@ -6,7 +6,8 @@ RUN pip install pipenv
 WORKDIR /app
 
 COPY Pipfile /app/
-RUN pipenv install --system --deploy --pre
+RUN pipenv install --pre
+RUN pipenv install --system --deploy
 
 COPY . /app/
 CMD /app/simulate.py
