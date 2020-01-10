@@ -17,7 +17,7 @@ def perform_training(node_id, tangle):
     return node.process_next_batch()
 
 def run():
-    os.makedirs('tangle_data/transactions')
+    os.makedirs('tangle_data/transactions', exist_ok=True)
     genesis = Transaction(Model().get_weights(), [], tag=0)
     tangle = Tangle({genesis.name(): genesis}, genesis.name())
     tangle.save(0, 100)
