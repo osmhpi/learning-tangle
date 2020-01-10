@@ -1,3 +1,6 @@
 .idea/
 .vscode/
 viewer/tangle_*.json
+tangle_data/
+data/
+__pycache__
