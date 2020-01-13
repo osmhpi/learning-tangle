@@ -13,9 +13,16 @@ from tangle import Tangle, Node, Transaction, Model
 NUM_CLIENTS = 5
 NUM_ROUNDS = 10
 
-def perform_training(node_id, tangle):
-    node = Node(node_id, tangle)
-    return node.process_next_batch()
+def evaluate(tangle, dataset_iter):
+    # To compute the 'current performance' of the collaboratively trained model, create a node and let it pick a model
+    evaluation_node = Node(None, tangle)
+    evaluation_data = next(dataset_iter)
+    return evaluation_node.compute_current_loss(tf.data.Dataset.from_tensor_slices(
+      {
+        'pixels': [p for p in evaluation_data['pixels']],
+        'label': [l for l in evaluation_data['label']]
+      }
+    ))[0]
 
 def run():
     os.makedirs('tangle_data/transactions', exist_ok=True)
@@ -24,9 +31,9 @@ def run():
     tangle.save(0, 100)
 
     # For visualization purposes
-    global_loss = [1]
+    global_loss = []
     emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
-    testds_iter = iter(tff.simulation.datasets.build_synthethic_iid_datasets(emnist_test, 100))
+    testdataset_iter = iter(tff.simulation.datasets.build_synthethic_iid_datasets(emnist_test, 100))
 
     nodes = os.listdir('data')
 
@@ -46,6 +53,9 @@ def run():
         for n in selected_nodes:
             processes.append(subprocess.Popen(["./step.py", n, str(rnd)], stdout=subprocess.PIPE))
 
+        # Interleave training and evaluation of the previous round
+        global_loss.append(evaluate(tangle, testdataset_iter))
+
         for p in processes:
             out, err = p.communicate()
             result = out.decode('utf-8').strip()
@@ -53,14 +63,6 @@ def run():
                 parts = result.split()
                 tangle.add_transaction(Transaction(None, parts[1:], parts[0], rnd+1))
 
-        # To compute the 'current performance' of the collaboratively trained model, make up a node and let it pick a model
-        evaluation_node = Node(None, tangle)
-        evaluation_data = next(testds_iter)
-        pixels = [p for p in evaluation_data['pixels']]
-        labels = [l for l in evaluation_data['label']]
-        global_loss.append(evaluation_node.compute_current_loss(tf.data.Dataset.from_tensor_slices(
-          {'pixels': pixels, 'label': labels}
-        ))[0])
 
         # tangle.show()
         tangle.save(rnd+1, global_loss)
