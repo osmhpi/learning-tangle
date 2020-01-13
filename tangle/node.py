@@ -25,12 +25,16 @@ class Node:
 
       transaction_confidence = {x: 0 for x in self.tangle.transactions}
 
-      def approved_transactions(transaction):
-          result = [transaction]
-          for parent in self.tangle.transactions[transaction].parents:
-              result += approved_transactions(parent)
+      approved_transactions_cache = {}
 
-          return result
+      def approved_transactions(transaction):
+          if transaction not in approved_transactions_cache:
+              result = [transaction]
+              for parent in self.tangle.transactions[transaction].parents:
+                  result += approved_transactions(parent)
+              approved_transactions_cache[transaction] = result
+
+          return approved_transactions_cache[transaction]
 
       # Use a cached tip selector
       selector = TipSelector(self.tangle)

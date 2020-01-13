@@ -35,16 +35,20 @@ class TipSelector:
 
     def calculate_cumulative_weight(self, approving_transactions):
         rating = {}
+        future_set_cache = {}
         for tx in self.tangle.transactions:
-            rating[tx] = len(self.future_set(tx, approving_transactions)) + 1
+            rating[tx] = len(self.future_set(tx, approving_transactions, future_set_cache)) + 1
 
         return rating
 
-    def future_set(self, tx, approving_transactions):
+    def future_set(self, tx, approving_transactions, future_set_cache):
         def recurse_future_set(t):
-            direct_approvals = approving_transactions[t]
-            indirect_approvals = [recurse_future_set(x) for x in approving_transactions[t]]
-            return list(itertools.chain.from_iterable([direct_approvals] + indirect_approvals))
+            if t not in future_set_cache:
+                direct_approvals = approving_transactions[t]
+                indirect_approvals = [recurse_future_set(x) for x in approving_transactions[t]]
+                future_set_cache[t] = list(itertools.chain.from_iterable([direct_approvals] + indirect_approvals))
+
+            return future_set_cache[t]
 
         return set(recurse_future_set(tx))
 
