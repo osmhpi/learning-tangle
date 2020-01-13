@@ -28759,7 +28759,7 @@ var Tangle = function Tangle(props) {
                 fill: '#666', fontFamily: 'Helvetica',
                 alignmentBaseline: 'middle', textAnchor: 'middle',
                 pointerEvents: 'none' },
-              node.name
+              node.name.slice(0, 8)
             )
           );
         })
@@ -42384,21 +42384,20 @@ var jStat = __webpack_require__(305).jStat;
 var loadTangle = exports.loadTangle = async function loadTangle(_ref) {
   var iteration = _ref.iteration;
 
-  var res = await fetch('/tangle_' + iteration + '.json');
+  var res = await fetch('/tangle_data/tangle_' + iteration + '.json');
   var data = await res.json();
 
   var nodes = data.nodes.map(function (x) {
     return _extends({}, x, { x: 300, y: 200 });
   });
-  var links = data.links.map(function (x) {
-    return {
-      source: nodes.find(function (n) {
-        return n.name === x.source;
-      }),
-      target: nodes.find(function (n) {
-        return n.name === x.target;
-      })
-    };
+  var links = data.nodes.flatMap(function (x) {
+    return x.parents.map(function (p) {
+      return { source: nodes.find(function (n) {
+          return n.name === x.name;
+        }), target: nodes.find(function (n) {
+          return n.name === p;
+        }) };
+    });
   });
 
   return { nodes: nodes, links: links, globalLoss: data.global_loss };
