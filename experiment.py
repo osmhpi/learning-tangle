@@ -6,6 +6,7 @@ import subprocess
 
 import numpy as np
 import tensorflow as tf
+from tensorflow_federated import python as tff
 
 from tangle import Tangle, Node, Transaction, Model
 
@@ -23,7 +24,9 @@ def run():
     tangle.save(0, 100)
 
     # For visualization purposes
-    global_loss = []
+    global_loss = [1]
+    emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
+    testds_iter = iter(tff.simulation.datasets.build_synthethic_iid_datasets(emnist_test, 100))
 
     nodes = os.listdir('data')
 
@@ -50,7 +53,14 @@ def run():
                 parts = result.split()
                 tangle.add_transaction(Transaction(None, parts[1:], parts[0], rnd+1))
 
-        # global_loss.append(sum([loss for _, loss in new_transactions]) / len(selected_nodes))
+        # To compute the 'current performance' of the collaboratively trained model, make up a node and let it pick a model
+        evaluation_node = Node(None, tangle)
+        evaluation_data = next(testds_iter)
+        pixels = [p for p in evaluation_data['pixels']]
+        labels = [l for l in evaluation_data['label']]
+        global_loss.append(evaluation_node.compute_current_loss(tf.data.Dataset.from_tensor_slices(
+          {'pixels': pixels, 'label': labels}
+        ))[0])
 
         # tangle.show()
         tangle.save(rnd+1, global_loss)
