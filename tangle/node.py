@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import tensorflow as tf
 
@@ -11,18 +9,6 @@ class Node:
   def __init__(self, id, tangle):
     self.id = id
     self.tangle = tangle
-
-  def load_dataset(self, name):
-    examples = []
-    labels = []
-
-    for label in os.listdir(f'data/{self.id}/{name}'):
-        for sample in os.listdir(f'data/{self.id}/{name}/{label}'):
-            pixels = np.load(f'data/{self.id}/{name}/{label}/{sample}')
-            examples.append(pixels)
-            labels.append(int(label))
-
-    return tf.data.Dataset.from_tensor_slices({'pixels': examples, 'label': labels})
 
   def choose_tips(self, selector=None):
       if len(self.tangle.transactions) < 2:
@@ -96,8 +82,8 @@ class Node:
       return sorted(evaluated_tx.items(), key=lambda tx: tx[1])[0][1]
 
   def process_next_batch(self):
-    train_data = self.load_dataset('train')
-    test_data = self.load_dataset('test')
+    train_data = Model.load_dataset(self.id, 'train')
+    test_data = Model.load_dataset(self.id, 'test')
 
     current_loss = self.compute_current_loss(test_data)
 

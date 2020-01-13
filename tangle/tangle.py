@@ -34,10 +34,6 @@ class Tangle:
                 t.add_tag(sequence_no)
 
         n = [{'name': t.name(), 'time': t.tag, 'parents': t.parents} for _, t in self.transactions.items()]
-        # edges = [
-        #     *[{'source': x.name(), 'target': x.p1} for x in self.transactions if x.p1 is not None],
-        #     *[{'source': x.name(), 'target': x.p2} for x in self.transactions if x.p2 is not None and x.p1 != x.p2]
-        # ]
 
         with open(f'tangle_data/tangle_{sequence_no}.json', 'w') as outfile:
             json.dump({'nodes': n, 'genesis': self.genesis, 'global_loss': global_loss}, outfile)

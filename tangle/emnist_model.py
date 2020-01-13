@@ -1,3 +1,4 @@
+import os
 import collections
 
 import numpy as np
@@ -69,3 +70,16 @@ class Model:
         # self.evaluate() -> (loss, sparse_categorical_accuracy)
         # Not sure if we can ignore the sparse_categorical_accuracy here
         return self.evaluate(data)[0] < other_result[0]
+
+    @staticmethod
+    def load_dataset(client_id, name):
+      examples = []
+      labels = []
+
+      for label in os.listdir(f'data/{client_id}/{name}'):
+          for sample in os.listdir(f'data/{client_id}/{name}/{label}'):
+              pixels = np.load(f'data/{client_id}/{name}/{label}/{sample}')
+              examples.append(pixels)
+              labels.append(int(label))
+
+      return tf.data.Dataset.from_tensor_slices({'pixels': examples, 'label': labels})
