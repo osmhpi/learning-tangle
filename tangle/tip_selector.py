@@ -16,7 +16,7 @@ class TipSelector:
             for unique_parent in tx.parents:
                 self.approving_transactions[unique_parent].append(x)
 
-        self.ratings = self.calculate_cumulative_weight(self.approving_transactions)
+        self.ratings = self.compute_ratings(self.approving_transactions)
 
     def tip_selection(self):
         # https://docs.iota.org/docs/node-software/0.1/iri/concepts/tip-selection
@@ -33,7 +33,7 @@ class TipSelector:
 
         return trunk, branch
 
-    def calculate_cumulative_weight(self, approving_transactions):
+    def compute_ratings(self, approving_transactions):
         rating = {}
         future_set_cache = {}
         for tx in self.tangle.transactions:
@@ -44,13 +44,12 @@ class TipSelector:
     def future_set(self, tx, approving_transactions, future_set_cache):
         def recurse_future_set(t):
             if t not in future_set_cache:
-                direct_approvals = approving_transactions[t]
-                indirect_approvals = [recurse_future_set(x) for x in approving_transactions[t]]
-                future_set_cache[t] = list(itertools.chain.from_iterable([direct_approvals] + indirect_approvals))
+                direct_approvals = set(approving_transactions[t])
+                future_set_cache[t] = direct_approvals.union(*[recurse_future_set(x) for x in direct_approvals])
 
             return future_set_cache[t]
 
-        return set(recurse_future_set(tx))
+        return recurse_future_set(tx)
 
     def walk(self, tx, ratings, approving_transactions):
         step = tx

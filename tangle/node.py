@@ -20,7 +20,7 @@ class Node:
 
       return self.tangle.transactions[tip1], self.tangle.transactions[tip2]
 
-  def compute_confidence(self):
+  def compute_confidence(self, selector=None):
       num_sampling_rounds = 10
 
       transaction_confidence = {x: 0 for x in self.tangle.transactions}
@@ -29,21 +29,20 @@ class Node:
 
       def approved_transactions(transaction):
           if transaction not in approved_transactions_cache:
-              result = [transaction]
-              for parent in self.tangle.transactions[transaction].parents:
-                  result += approved_transactions(parent)
+              result = set([transaction]).union(*[approved_transactions(parent) for parent in self.tangle.transactions[transaction].parents])
               approved_transactions_cache[transaction] = result
 
           return approved_transactions_cache[transaction]
 
       # Use a cached tip selector
-      selector = TipSelector(self.tangle)
+      if selector is None:
+          selector = TipSelector(self.tangle)
 
       for i in range(num_sampling_rounds):
           branch, trunk = self.choose_tips(selector=selector)
-          for tx in set(approved_transactions(branch.name())):
+          for tx in approved_transactions(branch.name()):
               transaction_confidence[tx] += 1
-          for tx in set(approved_transactions(trunk.name())):
+          for tx in approved_transactions(trunk.name()):
               transaction_confidence[tx] += 1
 
       return {tx: float(transaction_confidence[tx]) / num_sampling_rounds for tx in self.tangle.transactions}
@@ -67,11 +66,11 @@ class Node:
 
       return {tx: cumulative_score[tx] for tx in transactions}
 
-  def compute_current_loss(self, data):
+  def compute_current_loss(self, data, selector=None):
       # Establish the 'current best' weights from the tangle
 
       # 1. Perform tip selection n times, establish confidence for each transaction
-      transaction_confidence = self.compute_confidence()
+      transaction_confidence = self.compute_confidence(selector=selector)
 
       # 2. Compute cumulative score for transactions with confidence greater than threshold
       approved_transactions = [tx for tx, confidence in transaction_confidence.items() if confidence >= 0.5]
@@ -89,10 +88,12 @@ class Node:
     train_data = Model.load_dataset(self.id, 'train')
     test_data = Model.load_dataset(self.id, 'test')
 
-    current_loss = self.compute_current_loss(test_data)
+    selector = TipSelector(self.tangle)
+
+    current_loss = self.compute_current_loss(test_data, selector)
 
     # Obtain two tips from the tangle
-    tip1, tip2 = self.choose_tips()
+    tip1, tip2 = self.choose_tips(selector=selector)
 
     # Perform averaging
 
