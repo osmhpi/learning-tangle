@@ -10,8 +10,7 @@ from tensorflow_federated import python as tff
 
 from tangle import Tangle, Node, Transaction, Model
 
-NUM_CLIENTS = 5
-NUM_ROUNDS = 10
+NUM_CLIENTS_PER_ROUND = 5
 
 def evaluate(tangle, dataset_iter):
     # To compute the 'current performance' of the collaboratively trained model, create a node and let it pick a model
@@ -37,17 +36,19 @@ def run():
 
     nodes = os.listdir('data')
 
-    # Organize transactions in artificial 'rounds'
-    for rnd in range(NUM_ROUNDS):
+    rounds = int(len(nodes) / NUM_CLIENTS_PER_ROUND)
 
-        print(f"Starting round {rnd + 1} / {NUM_ROUNDS}")
+    # Organize transactions in artificial 'rounds'
+    for rnd in range(rounds):
+
+        print(f"Starting round {rnd + 1} / {rounds}")
 
         # In each round, a set of nodes performs a training step and potentially publishes the result as a transaction.
         # Why would nodes continuously publish updates (in the real world)?
         # The stability of the tangle results from a continuous stream of well-behaved updates
         # even if they only provide a negligible improvement of the model.
 
-        selected_nodes = np.random.choice(nodes, NUM_CLIENTS, replace=False)
+        selected_nodes = np.random.choice(nodes, NUM_CLIENTS_PER_ROUND, replace=False)
 
         processes = []
         for n in selected_nodes:
