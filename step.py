@@ -16,7 +16,7 @@ def run():
     tangle = Tangle.fromfile(int(tangle_name))
 
     node = Node(node_id, tangle)
-    tx, loss = node.process_next_batch()
+    tx, loss, accuracy = node.process_next_batch()
 
     if tx is not None:
       print(tx.name(), *tx.parents)

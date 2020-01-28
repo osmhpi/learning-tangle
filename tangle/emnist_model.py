@@ -65,11 +65,9 @@ class Model:
     def evaluate(self, data):
         return self.model.evaluate(self.preprocess_test(data), verbose=0)
 
-    def performs_better_than(self, other_result, data):
-        # print(self.model.metrics_names) tells us that:
-        # self.evaluate() -> (loss, sparse_categorical_accuracy)
-        # Not sure if we can ignore the sparse_categorical_accuracy here
-        return self.evaluate(data)[0] < other_result[0]
+    def performs_better_than(self, other_loss, data):
+        loss, accuracy = self.evaluate(data)
+        return loss < other_loss
 
     @staticmethod
     def load_dataset(client_id, name):

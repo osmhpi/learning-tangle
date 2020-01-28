@@ -90,7 +90,8 @@ class Node:
 
     selector = TipSelector(self.tangle)
 
-    current_loss = self.compute_current_loss(test_data, selector)
+    loss, accuracy = self.compute_current_loss(test_data, selector)
+
 
     # Obtain two tips from the tangle
     tip1, tip2 = self.choose_tips(selector=selector)
@@ -111,8 +112,8 @@ class Node:
 
     averaged_model.train(train_data)
 
-    if averaged_model.performs_better_than(current_loss, test_data):
-        return Transaction(averaged_model.get_weights(), set([tip1.name(), tip2.name()])), current_loss[0]
+    if averaged_model.performs_better_than(loss, test_data):
+        return Transaction(averaged_model.get_weights(), set([tip1.name(), tip2.name()])), loss, accuracy
 
-    return None, current_loss[0]
+    return None, loss, accuracy
 

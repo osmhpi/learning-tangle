@@ -10,27 +10,29 @@ from tensorflow_federated import python as tff
 
 from tangle import Tangle, Node, Transaction, Model
 
-NUM_CLIENTS_PER_ROUND = 5
+NUM_CLIENTS_PER_ROUND = 50
 
 def evaluate(tangle, dataset_iter):
     # To compute the 'current performance' of the collaboratively trained model, create a node and let it pick a model
     evaluation_node = Node(None, tangle)
     evaluation_data = next(dataset_iter)
-    return evaluation_node.compute_current_loss(tf.data.Dataset.from_tensor_slices(
+    reference = evaluation_node.obtain_reference_model()
+    return reference.evaluate(tf.data.Dataset.from_tensor_slices(
       {
         'pixels': [p for p in evaluation_data['pixels']],
         'label': [l for l in evaluation_data['label']]
       }
-    ))[0]
+    ))
 
 def run():
     os.makedirs('tangle_data/transactions', exist_ok=True)
     genesis = Transaction(Model().get_weights(), [], tag=0)
     tangle = Tangle({genesis.name(): genesis}, genesis.name())
-    tangle.save(0, 100)
+    tangle.save(0, [], [])
 
     # For visualization purposes
     global_loss = []
+    global_accuracy = []
     emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
     testdataset_iter = iter(tff.simulation.datasets.build_synthethic_iid_datasets(emnist_test, 100))
 
@@ -55,7 +57,9 @@ def run():
             processes.append(subprocess.Popen(["./step.py", n, str(rnd)], stdout=subprocess.PIPE))
 
         # Interleave training and evaluation of the previous round
-        global_loss.append(evaluate(tangle, testdataset_iter))
+        loss, accuracy = evaluate(tangle, testdataset_iter)
+        global_loss.append(loss.item())
+        global_accuracy.append(accuracy.item())
 
         for p in processes:
             out, err = p.communicate()
@@ -64,9 +68,8 @@ def run():
                 parts = result.split()
                 tangle.add_transaction(Transaction(None, parts[1:], parts[0], rnd+1))
 
-
         # tangle.show()
-        tangle.save(rnd+1, global_loss)
+        tangle.save(rnd+1, global_loss, global_accuracy)
 
 if __name__ == '__main__':
     run()
