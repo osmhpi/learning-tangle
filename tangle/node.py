@@ -20,12 +20,10 @@ class Node:
 
       return self.tangle.transactions[tip1], self.tangle.transactions[tip2]
 
-  def compute_confidence(self, selector=None):
+  def compute_confidence(self, selector=None, approved_transactions_cache={}):
       num_sampling_rounds = 10
 
       transaction_confidence = {x: 0 for x in self.tangle.transactions}
-
-      approved_transactions_cache = {}
 
       def approved_transactions(transaction):
           if transaction not in approved_transactions_cache:
@@ -45,44 +43,39 @@ class Node:
           for tx in approved_transactions(trunk.name()):
               transaction_confidence[tx] += 1
 
-      return {tx: float(transaction_confidence[tx]) / num_sampling_rounds for tx in self.tangle.transactions}
+      return {tx: float(transaction_confidence[tx]) / (num_sampling_rounds * 2) for tx in self.tangle.transactions}
 
-  def compute_cumulative_score(self, transactions):
-      cumulative_score = {}
+  def compute_cumulative_score(self, transactions, approved_transactions_cache={}):
+      def compute_approved_transactions(transaction):
+          if transaction not in approved_transactions_cache:
+              result = set([transaction]).union(*[compute_approved_transactions(parent) for parent in self.tangle.transactions[transaction].parents])
+              approved_transactions_cache[transaction] = result
 
-      def compute_score(transaction):
-          if transaction in cumulative_score:
-              return cumulative_score[transaction]
+          return approved_transactions_cache[transaction]
 
-          result = 1
-          for unique_parent in self.tangle.transactions[transaction].parents:
-              result += compute_score(unique_parent)
+      return {tx: len(compute_approved_transactions(tx)) for tx in transactions}
 
-          cumulative_score[transaction] = result
-          return result
+  def obtain_reference_model(self, selector=None):
+      # Establish the 'current best'/'reference' weights from the tangle
 
-      for t in transactions:
-          compute_score(t)
-
-      return {tx: cumulative_score[tx] for tx in transactions}
-
-  def compute_current_loss(self, data, selector=None):
-      # Establish the 'current best' weights from the tangle
+      approved_transactions_cache = {}
 
       # 1. Perform tip selection n times, establish confidence for each transaction
-      transaction_confidence = self.compute_confidence(selector=selector)
+      # (i.e. which transactions were already approved by most of the current tips?)
+      transaction_confidence = self.compute_confidence(selector=selector, approved_transactions_cache=approved_transactions_cache)
 
-      # 2. Compute cumulative score for transactions with confidence greater than threshold
-      approved_transactions = [tx for tx, confidence in transaction_confidence.items() if confidence >= 0.5]
-      if len(approved_transactions) < 50:  # Below some threshold of transactions, we cannot 'trust' the network
-          approved_transactions = [tx for tx, confidence in
-                                    sorted(transaction_confidence.items(), key=lambda kv: kv[1], reverse=True)[:5]]
-      scores = self.compute_cumulative_score(approved_transactions)
+      # 2. Compute cumulative score for transactions
+      # (i.e. how many other transactions does a given transaction indirectly approve?)
+      keys = [x for x in self.tangle.transactions]
+      scores = self.compute_cumulative_score(keys, approved_transactions_cache=approved_transactions_cache)  # Todo: Reuse approved_transactions_cache from compute_confidence
 
-      # 3. For the top n percent of scored transactions run model evaluation and choose the best
-      top_five = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]  # Sort by high score -> low score
-      evaluated_tx = {tx[0]: Model(self.tangle.transactions[tx[0]].load_weights()).evaluate(data) for tx in top_five}
-      return sorted(evaluated_tx.items(), key=lambda tx: tx[1])[0][1]
+      # 3. For the top 100 transactions, compute the average
+      top_onehundred = sorted(
+          {tx: scores[tx] * transaction_confidence[tx] for tx in keys}.items(),
+          key=lambda kv: kv[1], reverse=True
+      )[:50]
+      return Model(self.tangle.transactions[top_onehundred[0][0]].load_weights()).average(
+          *[self.tangle.transactions[x[0]].load_weights() for x in top_onehundred[1:]])
 
   def process_next_batch(self):
     train_data = Model.load_dataset(self.id, 'train')
@@ -90,9 +83,8 @@ class Node:
 
     selector = TipSelector(self.tangle)
 
-    loss, accuracy = self.compute_current_loss(test_data, selector)
-
-
+    reference = self.obtain_reference_model(selector=selector)
+    loss, accuracy = reference.evaluate(test_data)
     # Obtain two tips from the tangle
     tip1, tip2 = self.choose_tips(selector=selector)
 
@@ -108,8 +100,7 @@ class Node:
     # in order to prevent over-fitting.
 
     # Here: simple unweighted average
-    averaged_model = Model(tip1.load_weights()).average(Model(tip2.load_weights()))
-
+    averaged_model = Model(tip1.load_weights()).average(tip2.load_weights())
     averaged_model.train(train_data)
 
     if averaged_model.performs_better_than(loss, test_data):

@@ -18,8 +18,8 @@ class Model:
     def get_weights(self):
         return self.model.get_weights()
 
-    def average(self, other):
-        new_weights = [np.array(weights).mean(axis=0) for weights in zip(*[self.get_weights(), other.get_weights()])]
+    def average(self, *other_weights):
+        new_weights = [np.array(weights).mean(axis=0) for weights in zip(self.get_weights(), *other_weights)]
         return Model(new_weights)
 
     @staticmethod
