@@ -27,7 +27,7 @@ class Tangle:
         nx.draw_networkx_edges(graph, pos, edgelist=graph.edges(), arrows=False)
         plt.show()
 
-    def save(self, sequence_no, global_loss, global_accuracy):
+    def save(self, sequence_no, global_loss, global_accuracy, norm):
         # Mark untagged transactions with the sequence number
         for _, t in self.transactions.items():
             if t.tag is None:
@@ -36,7 +36,7 @@ class Tangle:
         n = [{'name': t.name(), 'time': t.tag, 'parents': t.parents} for _, t in self.transactions.items()]
 
         with open(f'tangle_data/tangle_{sequence_no}.json', 'w') as outfile:
-            json.dump({'nodes': n, 'genesis': self.genesis, 'global_loss': global_loss, 'global_accuracy': global_accuracy}, outfile)
+            json.dump({'nodes': n, 'genesis': self.genesis, 'global_loss': global_loss, 'global_accuracy': global_accuracy, 'norm': norm}, outfile)
 
     @classmethod
     def fromfile(cls, sequence_no):

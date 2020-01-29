@@ -28,11 +28,12 @@ def run():
     os.makedirs('tangle_data/transactions', exist_ok=True)
     genesis = Transaction(Model().get_weights(), [], tag=0)
     tangle = Tangle({genesis.name(): genesis}, genesis.name())
-    tangle.save(0, [], [])
+    tangle.save(0, [], [], [])
 
     # For visualization purposes
     global_loss = []
     global_accuracy = []
+    norm = []
     emnist_train, emnist_test = tff.simulation.datasets.emnist.load_data()
     testdataset_iter = iter(tff.simulation.datasets.build_synthethic_iid_datasets(emnist_test, 100))
 
@@ -61,15 +62,24 @@ def run():
         global_loss.append(loss.item())
         global_accuracy.append(accuracy.item())
 
+        norm_this_round = []
         for p in processes:
             out, err = p.communicate()
             result = out.decode('utf-8').strip()
             if len(result) > 0:
                 parts = result.split()
                 tangle.add_transaction(Transaction(None, parts[1:], parts[0], rnd+1))
+                parents = tangle.transactions[parts[0]].parents
+                if len(parents) == 2:
+                    p1, p2 = parents
+                    pw1 = tangle.transactions[p1].load_weights()
+                    pw2 = tangle.transactions[p2].load_weights()
+                    norm_this_round.append([np.linalg.norm(np.array(weights)[0]-np.array(weights)[1]) for weights in zip(pw1, pw2)])
+
+        norm.append(np.array(norm_this_round).mean(axis=0).tolist())
 
         # tangle.show()
-        tangle.save(rnd+1, global_loss, global_accuracy)
+        tangle.save(rnd+1, global_loss, global_accuracy, norm)
 
 if __name__ == '__main__':
     run()
