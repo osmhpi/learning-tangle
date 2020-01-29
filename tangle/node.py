@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import sys
 
 from .tip_selector import TipSelector
 from .emnist_model import Model
@@ -70,12 +71,11 @@ class Node:
       scores = self.compute_cumulative_score(keys, approved_transactions_cache=approved_transactions_cache)  # Todo: Reuse approved_transactions_cache from compute_confidence
 
       # 3. For the top 100 transactions, compute the average
-      top_onehundred = sorted(
+      best = sorted(
           {tx: scores[tx] * transaction_confidence[tx] for tx in keys}.items(),
           key=lambda kv: kv[1], reverse=True
-      )[:50]
-      return Model(self.tangle.transactions[top_onehundred[0][0]].load_weights()).average(
-          *[self.tangle.transactions[x[0]].load_weights() for x in top_onehundred[1:]])
+      )[0]
+      return Model(self.tangle.transactions[best[0]].load_weights())
 
   def process_next_batch(self):
     train_data = Model.load_dataset(self.id, 'train')
