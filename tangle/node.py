@@ -3,12 +3,11 @@ import tensorflow as tf
 import sys
 
 from .tip_selector import TipSelector
-from .emnist_model import Model
 from .transaction import Transaction
 
 class Node:
-  def __init__(self, id, tangle):
-    self.id = id
+  def __init__(self, client, tangle):
+    self.client = client
     self.tangle = tangle
 
   def choose_tips(self, selector=None):
@@ -56,7 +55,7 @@ class Node:
 
       return {tx: len(compute_approved_transactions(tx)) for tx in transactions}
 
-  def obtain_reference_model(self, selector=None):
+  def obtain_reference_params(self, selector=None):
       # Establish the 'current best'/'reference' weights from the tangle
 
       approved_transactions_cache = {}
@@ -75,16 +74,18 @@ class Node:
           {tx: scores[tx] * transaction_confidence[tx] for tx in keys}.items(),
           key=lambda kv: kv[1], reverse=True
       )[0]
-      return Model(self.tangle.transactions[best[0]].load_weights())
+      return self.tangle.transactions[best[0]].load_weights()
 
-  def process_next_batch(self):
-    train_data = Model.load_dataset(self.id, 'train')
-    test_data = Model.load_dataset(self.id, 'test')
+  def average_model_params(self, *params):
+    return [np.array(p).mean(axis=0) for p in zip(*params)]
 
+  def process_next_batch(self, num_epochs, batch_size):
     selector = TipSelector(self.tangle)
 
-    reference = self.obtain_reference_model(selector=selector)
-    loss, accuracy = reference.evaluate(test_data)
+    reference = self.obtain_reference_params(selector=selector)
+    self.client.model.set_params(reference)
+    c_metrics = self.client.test('test')
+
     # Obtain two tips from the tangle
     tip1, tip2 = self.choose_tips(selector=selector)
 
@@ -100,11 +101,13 @@ class Node:
     # in order to prevent over-fitting.
 
     # Here: simple unweighted average
-    averaged_model = Model(tip1.load_weights()).average(tip2.load_weights())
-    averaged_model.train(train_data)
+    averaged_weights = self.average_model_params(tip1.load_weights(), tip2.load_weights())
+    self.client.model.set_params(averaged_weights)
+    comp, num_samples, update = self.client.train(num_epochs, batch_size)
 
-    if averaged_model.performs_better_than(loss, test_data):
-        return Transaction(averaged_model.get_weights(), set([tip1.name(), tip2.name()])), loss, accuracy
+    c_averaged_model_metrics = self.client.test('test')
+    if c_averaged_model_metrics['loss'] < c_metrics['loss']:
+        return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()])), c_averaged_model_metrics, comp
 
-    return None, loss, accuracy
+    return None, None, None
 

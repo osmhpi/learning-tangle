@@ -16,6 +16,8 @@ from client import Client
 from server import Server
 from model import ServerModel
 
+from tangle import Tangle, Transaction
+
 from utils.args import parse_args
 from utils.model_utils import read_data
 
@@ -59,6 +61,15 @@ def main():
     tf.reset_default_graph()
     client_model = ClientModel(args.seed, *model_params)
 
+    # Create tangle and tangle metrics
+    os.makedirs('tangle_data/transactions', exist_ok=True)
+    genesis = Transaction(client_model.get_params(), [], tag=0)
+    tangle = Tangle({genesis.name(): genesis}, genesis.name())
+    global_loss = [],
+    global_accuracy = [],
+    norm = []
+    tangle.save(0, global_loss, global_accuracy, norm)
+
     # Create server
     server = Server(client_model)
 
@@ -71,7 +82,7 @@ def main():
     print('--- Random Initialization ---')
     stat_writer_fn = get_stat_writer_function(client_ids, client_groups, client_num_samples, args)
     sys_writer_fn = get_sys_writer_function(args)
-    print_stats(0, server, clients, client_num_samples, args, stat_writer_fn, args.use_val_set)
+    print_stats(0, tangle, clients, client_num_samples, args, stat_writer_fn, args.use_val_set)
 
     # Simulate training
     for i in range(num_rounds):
@@ -82,12 +93,100 @@ def main():
         c_ids, c_groups, c_num_samples = server.get_clients_info(server.selected_clients)
 
         # Simulate server model training on selected clients' data
-        sys_metrics = server.train_model(num_epochs=args.num_epochs, batch_size=args.batch_size, minibatch=args.minibatch)
+        sys_metrics = tangle.run_nodes(server.selected_clients, i+1, num_epochs=args.num_epochs, batch_size=args.batch_size)
+        # norm.append(np.array(norm_this_round).mean(axis=0).tolist() if len(norm_this_round) else [])
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 
         # Update server model
-        server.update_model()
+        # server.update_model()
 
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
-            print_stats(i + 1, server, clients, client_num_samples, args, stat_writer_fn, args.use_val_set)
+            print_stats(i + 1, tangle, clients, client_num_samples, args, stat_writer_fn, args.use_val_set)
+
+        tangle.save(i+1, global_loss, global_accuracy, norm)
+
+    # Close models
+    # server.close_model()
+
+def online(clients):
+    """We assume all users are always online."""
+    return clients
+
+def create_clients(users, groups, train_data, test_data, model):
+    if len(groups) == 0:
+        groups = [[] for _ in users]
+    clients = [Client(u, g, train_data[u], test_data[u], model) for u, g in zip(users, groups)]
+    return clients
+
+def setup_clients(dataset, model=None, use_val_set=False):
+    """Instantiates clients based on given train and test data directories.
+
+    Return:
+        all_clients: list of Client objects.
+    """
+    eval_set = 'test' if not use_val_set else 'val'
+    train_data_dir = os.path.join('leaf', 'data', dataset, 'data', 'train')
+    test_data_dir = os.path.join('leaf', 'data', dataset, 'data', eval_set)
+
+    users, groups, train_data, test_data = read_data(train_data_dir, test_data_dir)
+
+    clients = create_clients(users, groups, train_data, test_data, model)
+
+    return clients
+
+
+def get_stat_writer_function(ids, groups, num_samples, args):
+
+    def writer_fn(num_round, metrics, partition):
+        metrics_writer.print_metrics(
+            num_round, ids, metrics, groups, num_samples, partition, 'leaf/models/metrics', '{}_{}'.format('stat', args.metrics_name))
+
+    return writer_fn
+
+
+def get_sys_writer_function(args):
+
+    def writer_fn(num_round, ids, metrics, groups, num_samples):
+        metrics_writer.print_metrics(
+            num_round, ids, metrics, groups, num_samples, 'train', 'leaf/models/metrics', '{}_{}'.format('sys', args.metrics_name))
+
+    return writer_fn
+
+
+def print_stats(
+    num_round, tangle, clients, num_samples, args, writer, use_val_set):
+
+    train_stat_metrics = tangle.test_model(clients, set_to_use='train')
+    print_metrics(train_stat_metrics, num_samples, prefix='train_')
+    writer(num_round, train_stat_metrics, 'train')
+
+    eval_set = 'test' if not use_val_set else 'val'
+    test_stat_metrics = tangle.test_model(clients, set_to_use=eval_set)
+    print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set))
+    writer(num_round, test_stat_metrics, eval_set)
+
+
+def print_metrics(metrics, weights, prefix=''):
+    """Prints weighted averages of the given metrics.
+
+    Args:
+        metrics: dict with client ids as keys. Each entry is a dict
+            with the metrics of that client.
+        weights: dict with client ids as keys. Each entry is the weight
+            for that client.
+    """
+    ordered_weights = [weights[c] for c in sorted(weights)]
+    metric_names = metrics_writer.get_metrics_names(metrics)
+    to_ret = None
+    for metric in metric_names:
+        ordered_metric = [metrics[c][metric] for c in sorted(metrics)]
+        print('%s: %g, 10th percentile: %g, 50th percentile: %g, 90th percentile %g' \
+              % (prefix + metric,
+                 np.average(ordered_metric, weights=ordered_weights),
+                 np.percentile(ordered_metric, 10),
+                 np.percentile(ordered_metric, 50),
+                 np.percentile(ordered_metric, 90)))
+
+if __name__ == '__main__':
+    main()
