@@ -4,10 +4,10 @@ import collections
 import numpy as np
 import tensorflow as tf
 
-NUM_EPOCHS = 10
-BATCH_SIZE = 100
-SHUFFLE_BUFFER = 500
-BATCHES_PER_ROUND = 100
+NUM_EPOCHS = 5
+BATCH_SIZE = 10
+SHUFFLE_BUFFER = 100
+BATCHES_PER_ROUND = 10
 
 class Model:
     def __init__(self, weights=None):
