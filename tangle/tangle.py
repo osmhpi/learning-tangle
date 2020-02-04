@@ -1,15 +1,10 @@
 import json
-import numpy as np
-import importlib
-import tensorflow as tf
 import os
-import sys
-
 from multiprocessing import Pool, Process
 
-from baseline_constants import MAIN_PARAMS, MODEL_PARAMS, BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTATIONS_KEY
-from client import Client
-from utils.args import parse_args
+import numpy as np
+
+from baseline_constants import BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTATIONS_KEY
 
 from .transaction import Transaction
 from .node import Node
@@ -22,7 +17,7 @@ class Tangle:
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
 
-    def run_nodes(self, trainfn, clients, rnd, num_epochs=1, batch_size=10):
+    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10):
         norm_this_round = []
         new_transactions = []
 
@@ -35,7 +30,7 @@ class Tangle:
 
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         with Pool(50) as p:
-            results = p.starmap(trainfn, train_params)
+            results = p.starmap(train_fn, train_params)
 
         for tx, metrics, comp, client_id, client_sys_metrics in results:
             if tx is None:
