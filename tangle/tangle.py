@@ -1,7 +1,15 @@
 import json
 import numpy as np
+import importlib
+import tensorflow as tf
+import os
+import sys
 
-from baseline_constants import BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTATIONS_KEY
+from multiprocessing import Pool, Process
+
+from baseline_constants import MAIN_PARAMS, MODEL_PARAMS, BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTATIONS_KEY
+from client import Client
+from utils.args import parse_args
 
 from .transaction import Transaction
 from .node import Node
@@ -14,7 +22,7 @@ class Tangle:
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
 
-    def run_nodes(self, clients, rnd, num_epochs=1, batch_size=10):
+    def run_nodes(self, trainfn, clients, rnd, num_epochs=1, batch_size=10):
         norm_this_round = []
         new_transactions = []
 
@@ -23,26 +31,22 @@ class Tangle:
                    BYTES_READ_KEY: 0,
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
-        for client in clients:
-            node = Node(client, self)
-            tx, metrics, comp = node.process_next_batch(num_epochs, batch_size)
+        train_params = [[client.id, client.group, client.model.flops, client.train_data, client.eval_data, rnd-1] for client in clients]
 
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        with Pool(50) as p:
+            results = p.starmap(trainfn, train_params)
+
+        for tx, metrics, comp, client_id, client_sys_metrics in results:
             if tx is None:
                 continue
 
-            sys_metrics[node.client.id][BYTES_READ_KEY] += node.client.model.size
-            sys_metrics[node.client.id][BYTES_WRITTEN_KEY] += node.client.model.size
-            sys_metrics[node.client.id][LOCAL_COMPUTATIONS_KEY] = comp
+            sys_metrics[client_id][BYTES_READ_KEY] += client_sys_metrics[BYTES_READ_KEY]
+            sys_metrics[client_id][BYTES_WRITTEN_KEY] += client_sys_metrics[BYTES_WRITTEN_KEY]
+            sys_metrics[client_id][LOCAL_COMPUTATIONS_KEY] = client_sys_metrics[LOCAL_COMPUTATIONS_KEY]
 
             tx.tag = rnd
             new_transactions.append(tx)
-
-            # Compute norm
-            if (len(tx.parents) == 2):
-                parents = list(tx.parents)
-                pw1 = self.transactions[parents[0]].load_weights()
-                pw2 = self.transactions[parents[1]].load_weights()
-                norm_this_round.append([np.linalg.norm(np.array(weights)[0]-np.array(weights)[1]) for weights in zip(pw1, pw2)])
 
         for tx in new_transactions:
             self.add_transaction(tx)
