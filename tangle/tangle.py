@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from multiprocessing import Pool, Process
 
 import numpy as np
@@ -26,7 +27,7 @@ class Tangle:
                    BYTES_READ_KEY: 0,
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
-        train_params = [[client.id, client.group, client.model.flops, client.train_data, client.eval_data, rnd-1] for client in clients]
+        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1] for client in clients]
 
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         with Pool(50) as p:

@@ -1,5 +1,7 @@
 import importlib
+import random
 import tensorflow as tf
+import numpy as np
 
 from utils.args import parse_args
 from baseline_constants import MAIN_PARAMS, MODEL_PARAMS, BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTATIONS_KEY
@@ -8,9 +10,13 @@ from client import Client
 from .tangle import Tangle
 from .node import Node
 
-def train_single(u, g, flops, train_data, eval_data, tangle_name):
+def train_single(u, g, flops, seed, train_data, eval_data, tangle_name):
 
     args = parse_args()
+
+    random.seed(1 + seed)
+    np.random.seed(12 + seed)
+    tf.compat.v1.set_random_seed(123 + seed)
 
     model_path = '%s.%s' % (args.dataset, args.model)
     mod = importlib.import_module(model_path)
