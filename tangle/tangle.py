@@ -30,7 +30,7 @@ class Tangle:
         train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1] for client in clients]
 
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-        with Pool(50) as p:
+        with Pool(35) as p:
             results = p.starmap(train_fn, train_params)
 
         for tx, metrics, comp, client_id, client_sys_metrics in results:
