@@ -17,7 +17,7 @@ from client import Client
 from server import Server
 from model import ServerModel
 
-from tangle import Tangle, Transaction, train_single
+from tangle import Tangle, Transaction, train_single, test_single
 
 from utils.args import parse_args
 from utils.model_utils import read_data
@@ -84,7 +84,7 @@ def main():
     print('--- Random Initialization ---')
     stat_writer_fn = get_stat_writer_function(client_ids, client_groups, client_num_samples, args)
     sys_writer_fn = get_sys_writer_function(args)
-    print_stats(0, tangle, clients, client_num_samples, args, stat_writer_fn, args.use_val_set)
+    print_stats(0, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
 
     # Simulate training
     for i in range(num_rounds):
@@ -99,14 +99,13 @@ def main():
         # norm.append(np.array(norm_this_round).mean(axis=0).tolist() if len(norm_this_round) else [])
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 
-        # Update server model
-        # server.update_model()
+        # Update tangle on disk
+        tangle.save(i+1, global_loss, global_accuracy, norm)
 
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
-            print_stats(i + 1, tangle, clients, client_num_samples, args, stat_writer_fn, args.use_val_set)
+            print_stats(i + 1, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
 
-        tangle.save(i+1, global_loss, global_accuracy, norm)
 
     # Close models
     # server.close_model()
@@ -114,6 +113,10 @@ def main():
 def online(clients):
     """We assume all users are always online."""
     return clients
+
+def random_sample(clients, sample_size):
+    """Choose a subset of clients to perform the model validation. Only to be used during development to speed up experiment run times"""
+    return np.random.choice(clients, sample_size, replace=False)
 
 def create_clients(users, groups, train_data, test_data, model):
     if len(groups) == 0:
@@ -159,12 +162,12 @@ def get_sys_writer_function(args):
 def print_stats(
     num_round, tangle, clients, num_samples, args, writer, use_val_set):
 
-    train_stat_metrics = tangle.test_model(clients, set_to_use='train')
+    train_stat_metrics = tangle.test_model(test_single, clients, set_to_use='train')
     print_metrics(train_stat_metrics, num_samples, prefix='train_')
     writer(num_round, train_stat_metrics, 'train')
 
     eval_set = 'test' if not use_val_set else 'val'
-    test_stat_metrics = tangle.test_model(clients, set_to_use=eval_set)
+    test_stat_metrics = tangle.test_model(test_single, clients, set_to_use=eval_set)
     print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set))
     writer(num_round, test_stat_metrics, eval_set)
 
@@ -178,7 +181,7 @@ def print_metrics(metrics, weights, prefix=''):
         weights: dict with client ids as keys. Each entry is the weight
             for that client.
     """
-    ordered_weights = [weights[c] for c in sorted(weights)]
+    ordered_weights = [weights[c] for c in sorted(weights) if c in metrics]
     metric_names = metrics_writer.get_metrics_names(metrics)
     to_ret = None
     for metric in metric_names:

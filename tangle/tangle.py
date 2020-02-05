@@ -1,7 +1,7 @@
 import json
 import os
 import random
-from multiprocessing import Pool, Process
+from multiprocessing import Pool, Process, current_process
 
 import numpy as np
 
@@ -14,6 +14,9 @@ class Tangle:
     def __init__(self, transactions, genesis):
         self.transactions = transactions
         self.genesis = genesis
+        if current_process().name == 'MainProcess':
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+            self.process_pool = Pool(35)
 
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
@@ -29,9 +32,7 @@ class Tangle:
 
         train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1] for client in clients]
 
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-        with Pool(35) as p:
-            results = p.starmap(train_fn, train_params)
+        results = self.process_pool.starmap(train_fn, train_params)
 
         for tx, metrics, comp, client_id, client_sys_metrics in results:
             if tx is None:
@@ -49,15 +50,15 @@ class Tangle:
 
         return sys_metrics
 
-    def test_model(self, clients_to_test, set_to_use='test'):
+    def test_model(self, test_fn, clients_to_test, set_to_use='test'):
         metrics = {}
 
-        for client in clients_to_test:
-            node = Node(client, self)
-            reference = node.obtain_reference_params()
-            node.client.model.set_params(reference)
-            c_metrics = node.client.test(set_to_use)
-            metrics[client.id] = c_metrics
+        test_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use] for client in clients_to_test]
+
+        results = self.process_pool.starmap(test_fn, test_params)
+
+        for client, c_metrics in results:
+            metrics[client] = c_metrics
 
         return metrics
 
@@ -66,6 +67,8 @@ class Tangle:
 
         with open(f'tangle_data/tangle_{sequence_no}.json', 'w') as outfile:
             json.dump({'nodes': n, 'genesis': self.genesis, 'global_loss': global_loss, 'global_accuracy': global_accuracy, 'norm': norm}, outfile)
+
+        self.name = sequence_no
 
     @classmethod
     def fromfile(cls, sequence_no):
