@@ -8,7 +8,7 @@ verify_ssl = true
 [packages]
 tensorflow = "~=1.13"
 numpy = "*"
-pandas = "*"
+pandas = "==0.24.2"
 
 [requires]
 python_version = "3.7"
