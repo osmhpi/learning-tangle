@@ -1,4 +1,8 @@
 import json
+import os
+import random
+from multiprocessing import Pool, Process, current_process
+
 import numpy as np
 
 from baseline_constants import BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTATIONS_KEY
@@ -11,6 +15,10 @@ class Tangle:
     def __init__(self, transactions, genesis):
         self.transactions = transactions
         self.genesis = genesis
+        if current_process().name == 'MainProcess':
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+            self.process_pool = Pool(35)
+
         self.malicious_clients = None
         self.malicious_type = MaliciousType.NONE
 
@@ -22,7 +30,7 @@ class Tangle:
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
 
-    def run_nodes(self, clients, rnd, num_epochs=1, batch_size=10):
+    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10):
         norm_this_round = []
         new_transactions = []
 
@@ -31,6 +39,7 @@ class Tangle:
                    BYTES_READ_KEY: 0,
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
+        # create malicious node
         for client in clients:
             if client.id in self.malicious_clients:
                 print('malicious')
@@ -39,37 +48,35 @@ class Tangle:
                 node = Node(client, self)
             tx, metrics, comp = node.process_next_batch(num_epochs, batch_size)
 
+        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1] for client in clients]
+
+        results = self.process_pool.starmap(train_fn, train_params)
+
+        for tx, metrics, comp, client_id, client_sys_metrics in results:
             if tx is None:
                 continue
 
-            sys_metrics[node.client.id][BYTES_READ_KEY] += node.client.model.size
-            sys_metrics[node.client.id][BYTES_WRITTEN_KEY] += node.client.model.size
-            sys_metrics[node.client.id][LOCAL_COMPUTATIONS_KEY] = comp
+            sys_metrics[client_id][BYTES_READ_KEY] += client_sys_metrics[BYTES_READ_KEY]
+            sys_metrics[client_id][BYTES_WRITTEN_KEY] += client_sys_metrics[BYTES_WRITTEN_KEY]
+            sys_metrics[client_id][LOCAL_COMPUTATIONS_KEY] = client_sys_metrics[LOCAL_COMPUTATIONS_KEY]
 
             tx.tag = rnd
             new_transactions.append(tx)
-
-            # Compute norm
-            if (len(tx.parents) == 2):
-                parents = list(tx.parents)
-                pw1 = self.transactions[parents[0]].load_weights()
-                pw2 = self.transactions[parents[1]].load_weights()
-                norm_this_round.append([np.linalg.norm(np.array(weights)[0]-np.array(weights)[1]) for weights in zip(pw1, pw2)])
 
         for tx in new_transactions:
             self.add_transaction(tx)
 
         return sys_metrics
 
-    def test_model(self, clients_to_test, set_to_use='test'):
+    def test_model(self, test_fn, clients_to_test, set_to_use='test'):
         metrics = {}
 
-        for client in clients_to_test:
-            node = Node(client, self)
-            reference = node.obtain_reference_params()
-            node.client.model.set_params(reference)
-            c_metrics = node.client.test(set_to_use)
-            metrics[client.id] = c_metrics
+        test_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use] for client in clients_to_test]
+
+        results = self.process_pool.starmap(test_fn, test_params)
+
+        for client, c_metrics in results:
+            metrics[client] = c_metrics
 
         return metrics
 
@@ -78,6 +85,8 @@ class Tangle:
 
         with open(f'tangle_data/tangle_{sequence_no}.json', 'w') as outfile:
             json.dump({'nodes': n, 'genesis': self.genesis, 'global_loss': global_loss, 'global_accuracy': global_accuracy, 'norm': norm}, outfile)
+
+        self.name = sequence_no
 
     @classmethod
     def fromfile(cls, sequence_no):
