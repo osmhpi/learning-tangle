@@ -76,4 +76,6 @@ class Tangle:
           t = json.load(tanglefile)
 
       transactions = {n['name']: Transaction(None, set(n['parents']), n['name'], n['time']) for n in t['nodes']}
-      return cls(transactions, t['genesis'])
+      tangle = cls(transactions, t['genesis'])
+      tangle.name = sequence_no
+      return tangle
