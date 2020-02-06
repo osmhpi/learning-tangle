@@ -4,11 +4,13 @@ import sys
 
 from .tip_selector import TipSelector
 from .transaction import Transaction
+from .malicious_type import MaliciousType
 
 class Node:
-  def __init__(self, client, tangle):
+  def __init__(self, client, tangle, malicious=MaliciousType.NONE):
     self.client = client
     self.tangle = tangle
+    self.malicious = malicious
 
   def choose_tips(self, selector=None):
       if len(self.tangle.transactions) < 2:
@@ -82,6 +84,7 @@ class Node:
   def process_next_batch(self, num_epochs, batch_size):
     selector = TipSelector(self.tangle)
 
+    # Compute reference metrics
     reference = self.obtain_reference_params(selector=selector)
     self.client.model.set_params(reference)
     c_metrics = self.client.test('test')
@@ -89,25 +92,34 @@ class Node:
     # Obtain two tips from the tangle
     tip1, tip2 = self.choose_tips(selector=selector)
 
-    # Perform averaging
+    if self.malicious == MaliciousType.RANDOM:
+        weights = self.client.model.get_params()
+        malicious_weights = [np.random.normal(size=w.shape) for w in weights]
+        # Todo Set identifiable ID
+        return Transaction(malicious_weights, set([tip1.name(), tip2.name()])), None, None
+    elif self.malicious == MaliciousType.LABELFLIP:
+        self.client.model.set_params(reference)
+        comp, num_samples, update = self.client.train(num_epochs, batch_size)
+        return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()])), None, None
+    else:
+        # Perform averaging
 
-    # How averaging is done exactly (e.g. weighted, using which weights) is left to the
-    # network participants. It is not reproducible or verifiable by other nodes because
-    # only the resulting weights are published.
-    # Once a node has published its training results, it thus can't be sure if
-    # and by what weight its delta is being incorporated into approving transactions.
-    # However, assuming most nodes are well-behaved, they will make sure that eventually
-    # those weights will prevail that incorporate as many partial results as possible
-    # in order to prevent over-fitting.
+        # How averaging is done exactly (e.g. weighted, using which weights) is left to the
+        # network participants. It is not reproducible or verifiable by other nodes because
+        # only the resulting weights are published.
+        # Once a node has published its training results, it thus can't be sure if
+        # and by what weight its delta is being incorporated into approving transactions.
+        # However, assuming most nodes are well-behaved, they will make sure that eventually
+        # those weights will prevail that incorporate as many partial results as possible
+        # in order to prevent over-fitting.
 
-    # Here: simple unweighted average
-    averaged_weights = self.average_model_params(tip1.load_weights(), tip2.load_weights())
-    self.client.model.set_params(averaged_weights)
-    comp, num_samples, update = self.client.train(num_epochs, batch_size)
+        # Here: simple unweighted average
+        averaged_weights = self.average_model_params(tip1.load_weights(), tip2.load_weights())
+        self.client.model.set_params(averaged_weights)
+        comp, num_samples, update = self.client.train(num_epochs, batch_size)
 
-    c_averaged_model_metrics = self.client.test('test')
-    if c_averaged_model_metrics['loss'] < c_metrics['loss']:
-        return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()])), c_averaged_model_metrics, comp
+        c_averaged_model_metrics = self.client.test('test')
+        if c_averaged_model_metrics['loss'] < c_metrics['loss']:
+            return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()])), c_averaged_model_metrics, comp
 
     return None, None, None
-

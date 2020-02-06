@@ -5,6 +5,7 @@ import numpy as np
 import os
 import sys
 import random
+import math
 import tensorflow as tf
 
 sys.path.insert(1, './leaf/models')
@@ -16,7 +17,7 @@ from client import Client
 from server import Server
 from model import ServerModel
 
-from tangle import Tangle, Transaction
+from tangle import Tangle, Transaction, MaliciousType
 
 from utils.args import parse_args
 from utils.model_utils import read_data
@@ -74,7 +75,8 @@ def main():
     server = Server(client_model)
 
     # Create clients
-    clients = setup_clients(args.dataset, client_model, args.use_val_set)
+    clients, malicious_clients = setup_clients(args.dataset, client_model, args.use_val_set, args.malicious_fraction, MaliciousType[args.malicious_type])
+    tangle.register_malicious_clients(malicious_clients, MaliciousType[args.malicious_type])
     client_ids, client_groups, client_num_samples = server.get_clients_info(clients)
     print('Clients in Total: %d' % len(clients))
 
@@ -119,7 +121,7 @@ def create_clients(users, groups, train_data, test_data, model):
     clients = [Client(u, g, train_data[u], test_data[u], model) for u, g in zip(users, groups)]
     return clients
 
-def setup_clients(dataset, model=None, use_val_set=False):
+def setup_clients(dataset, model=None, use_val_set=False, malicious_fraction=0, malicious_type=MaliciousType.NONE):
     """Instantiates clients based on given train and test data directories.
 
     Return:
@@ -133,7 +135,15 @@ def setup_clients(dataset, model=None, use_val_set=False):
 
     clients = create_clients(users, groups, train_data, test_data, model)
 
-    return clients
+    num_malicious_clients = math.floor(len(clients) * malicious_fraction)
+    malicious_clients = [client.id for client in clients[:num_malicious_clients]]
+    if malicious_type == MaliciousType.LABELFLIP:
+        print(clients[0].train_data['y'])
+        for client in clients[:num_malicious_clients]:
+            # flip labels
+            client.train_data = client.train_data
+
+    return clients, malicious_clients
 
 
 def get_stat_writer_function(ids, groups, num_samples, args):

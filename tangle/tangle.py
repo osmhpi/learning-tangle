@@ -5,11 +5,19 @@ from baseline_constants import BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTAT
 
 from .transaction import Transaction
 from .node import Node
+from .malicious_type import MaliciousType
 
 class Tangle:
     def __init__(self, transactions, genesis):
         self.transactions = transactions
         self.genesis = genesis
+        self.malicious_clients = None
+        self.malicious_type = MaliciousType.NONE
+
+    def register_malicious_clients(self, list_of_clients, malicious_type):
+        # Todo print
+        self.malicious_clients = list_of_clients
+        self.malicious_type = malicious_type
 
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
@@ -24,7 +32,11 @@ class Tangle:
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
         for client in clients:
-            node = Node(client, self)
+            if client.id in self.malicious_clients:
+                print('malicious')
+                node = Node(client, self, self.malicious_type)
+            else:
+                node = Node(client, self)
             tx, metrics, comp = node.process_next_batch(num_epochs, batch_size)
 
             if tx is None:
