@@ -10,6 +10,7 @@ import tensorflow as tf
 import multiprocessing as mp
 
 sys.path.insert(1, './leaf/models')
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import metrics.writer as metrics_writer
 
@@ -25,6 +26,9 @@ from utils.model_utils import read_data
 
 STAT_METRICS_PATH = 'metrics/stat_metrics.csv'
 SYS_METRICS_PATH = 'metrics/sys_metrics.csv'
+
+FLIP_FROM_CLASS = 3
+FLIP_TO_CLASS = 8
 
 def main():
     mp.set_start_method('spawn')
@@ -78,7 +82,7 @@ def main():
 
     # Create clients
     clients, malicious_clients = setup_clients(args.dataset, client_model, args.use_val_set, args.malicious_fraction, MaliciousType[args.malicious_type])
-    tangle.register_malicious_clients(malicious_clients, MaliciousType[args.malicious_type])
+    malicious_type = MaliciousType[args.malicious_type]
     client_ids, client_groups, client_num_samples = server.get_clients_info(clients)
     print('Clients in Total: %d' % len(clients))
 
@@ -97,7 +101,7 @@ def main():
         c_ids, c_groups, c_num_samples = server.get_clients_info(server.selected_clients)
 
         # Simulate server model training on selected clients' data
-        sys_metrics = tangle.run_nodes(train_single, server.selected_clients, i+1, num_epochs=args.num_epochs, batch_size=args.batch_size)
+        sys_metrics = tangle.run_nodes(train_single, server.selected_clients, i+1, num_epochs=args.num_epochs, batch_size=args.batch_size, malicious_clients=malicious_clients, malicious_type=malicious_type)
         # norm.append(np.array(norm_this_round).mean(axis=0).tolist() if len(norm_this_round) else [])
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 
@@ -143,10 +147,9 @@ def setup_clients(dataset, model=None, use_val_set=False, malicious_fraction=0, 
     num_malicious_clients = math.floor(len(clients) * malicious_fraction)
     malicious_clients = [client.id for client in clients[:num_malicious_clients]]
     if malicious_type == MaliciousType.LABELFLIP:
-        print(clients[0].train_data['y'])
         for client in clients[:num_malicious_clients]:
             # flip labels
-            client.train_data = client.train_data
+            client.train_data['y'] = [FLIP_TO_CLASS if y == FLIP_FROM_CLASS else y for y in client.train_data['y']]
 
     return clients, malicious_clients
 

@@ -16,21 +16,13 @@ class Tangle:
         self.transactions = transactions
         self.genesis = genesis
         if current_process().name == 'MainProcess':
-            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-            self.process_pool = Pool(35)
-
-        self.malicious_clients = None
-        self.malicious_type = MaliciousType.NONE
-
-    def register_malicious_clients(self, list_of_clients, malicious_type):
-        # Todo print
-        self.malicious_clients = list_of_clients
-        self.malicious_type = malicious_type
+            #os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+            self.process_pool = Pool(10)
 
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
 
-    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10):
+    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10, malicious_clients=None, malicious_type=MaliciousType.NONE):
         norm_this_round = []
         new_transactions = []
 
@@ -39,16 +31,7 @@ class Tangle:
                    BYTES_READ_KEY: 0,
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
-        # create malicious node
-        for client in clients:
-            if client.id in self.malicious_clients:
-                print('malicious')
-                node = Node(client, self, self.malicious_type)
-            else:
-                node = Node(client, self)
-            tx, metrics, comp = node.process_next_batch(num_epochs, batch_size)
-
-        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1] for client in clients]
+        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1, (client.id in malicious_clients), malicious_type] for client in clients]
 
         results = self.process_pool.starmap(train_fn, train_params)
 
@@ -81,7 +64,7 @@ class Tangle:
         return metrics
 
     def save(self, sequence_no, global_loss, global_accuracy, norm):
-        n = [{'name': t.name(), 'time': t.tag, 'parents': list(t.parents)} for _, t in self.transactions.items()]
+        n = [{'name': t.name(), 'time': t.tag, 'malicious': t.malicious, 'parents': list(t.parents)} for _, t in self.transactions.items()]
 
         with open(f'tangle_data/tangle_{sequence_no}.json', 'w') as outfile:
             json.dump({'nodes': n, 'genesis': self.genesis, 'global_loss': global_loss, 'global_accuracy': global_accuracy, 'norm': norm}, outfile)
@@ -93,5 +76,5 @@ class Tangle:
       with open(f'tangle_data/tangle_{sequence_no}.json', 'r') as tanglefile:
           t = json.load(tanglefile)
 
-      transactions = {n['name']: Transaction(None, set(n['parents']), n['name'], n['time']) for n in t['nodes']}
+      transactions = {n['name']: Transaction(None, set(n['parents']), n['name'], n['time'], n['malicious']) for n in t['nodes']}
       return cls(transactions, t['genesis'])

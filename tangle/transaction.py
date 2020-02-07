@@ -5,7 +5,7 @@ from tempfile import TemporaryFile
 import numpy as np
 
 class Transaction:
-    def __init__(self, weights, parents, id=None, tag=None):
+    def __init__(self, weights, parents, id=None, tag=None, malicious=False):
         self.parents = parents
         self.id = id
 
@@ -16,6 +16,7 @@ class Transaction:
 
         self.weights = weights
         self.tag = tag
+        self.malicious = malicious
 
     # @classmethod
     # def fromfile(cls, id):
@@ -41,7 +42,6 @@ class Transaction:
 
             with open(f'tangle_data/transactions/{self.id}.npy', 'wb') as tx_file:
                 self.save(tx_file)
-
         return self.id
 
     @staticmethod

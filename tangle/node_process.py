@@ -35,7 +35,7 @@ def build_client(u, g, flops, train_data, eval_data):
     client_model.flops = flops
     return Client(u, g, train_data, eval_data, client_model)
 
-def train_single(u, g, flops, seed, train_data, eval_data, tangle_name):
+def train_single(u, g, flops, seed, train_data, eval_data, tangle_name, malicious_node, malicious_type):
     # Suppress tf warnings
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
@@ -46,7 +46,10 @@ def train_single(u, g, flops, seed, train_data, eval_data, tangle_name):
     client = build_client(u, g, flops, train_data, eval_data)
 
     tangle = Tangle.fromfile(tangle_name)
-    node = Node(client, tangle)
+    if malicious_node:
+        node = Node(client, tangle, malicious_type)
+    else:
+        node = Node(client, tangle)
 
     args = parse_args()
     tx, metrics, comp = node.process_next_batch(args.num_epochs, args.batch_size)

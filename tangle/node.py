@@ -94,13 +94,13 @@ class Node:
 
     if self.malicious == MaliciousType.RANDOM:
         weights = self.client.model.get_params()
-        malicious_weights = [np.random.normal(size=w.shape) for w in weights]
-        # Todo Set identifiable ID
-        return Transaction(malicious_weights, set([tip1.name(), tip2.name()])), None, None
+        malicious_weights = [np.random.RandomState().normal(size=w.shape) for w in weights]
+        print('generated malicious weights')
+        return Transaction(malicious_weights, set([tip1.name(), tip2.name()]), malicious=True), None, None
     elif self.malicious == MaliciousType.LABELFLIP:
         self.client.model.set_params(reference)
-        comp, num_samples, update = self.client.train(num_epochs, batch_size)
-        return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()])), None, None
+        self.client.train(num_epochs, batch_size)
+        return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()]), malicious=True), None, None
     else:
         # Perform averaging
 
