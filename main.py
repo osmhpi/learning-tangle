@@ -35,6 +35,8 @@ def main():
 
     args = parse_args()
 
+    start_from_round = 0
+
     # Set the random seed if provided (affects client sampling, and batching)
     random.seed(1 + args.seed)
     np.random.seed(12 + args.seed)
@@ -50,7 +52,7 @@ def main():
     ClientModel = getattr(mod, 'ClientModel')
 
     tup = MAIN_PARAMS[args.dataset][args.t]
-    num_rounds = args.num_rounds if args.num_rounds != -1 else tup[0]
+    num_rounds = (args.num_rounds if args.num_rounds != -1 else tup[0]) + start_from_round
     eval_every = args.eval_every if args.eval_every != -1 else tup[1]
     clients_per_round = args.clients_per_round if args.clients_per_round != -1 else tup[2]
 
@@ -70,12 +72,18 @@ def main():
 
     # Create tangle and tangle metrics
     os.makedirs('tangle_data/transactions', exist_ok=True)
-    genesis = Transaction(client_model.get_params(), [], tag=0)
-    tangle = Tangle({genesis.name(): genesis}, genesis.name())
+
+    # Legacy metrics variables (not used)
     global_loss = [],
     global_accuracy = [],
     norm = []
-    tangle.save(0, global_loss, global_accuracy, norm)
+
+    if start_from_round == 0:
+        genesis = Transaction(client_model.get_params(), [], tag=0)
+        tangle = Tangle({genesis.name(): genesis}, genesis.name())
+        tangle.save(0, global_loss, global_accuracy, norm)
+    else:
+        tangle = Tangle.fromfile(start_from_round)
 
     # Create server
     server = Server(client_model)
@@ -93,7 +101,7 @@ def main():
     print_stats(0, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
 
     # Simulate training
-    for i in range(num_rounds):
+    for i in range(start_from_round, num_rounds):
         print('--- Round %d of %d: Training %d Clients ---' % (i + 1, num_rounds, clients_per_round))
 
         # Select clients to train this round
