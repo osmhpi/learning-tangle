@@ -120,7 +120,7 @@ def main():
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
             print_stats(i + 1, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
 
-
+    #compute_confusion_matrix()
     # Close models
     # server.close_model()
 
@@ -189,11 +189,11 @@ def print_stats(
 
     eval_set = 'test' if not use_val_set else 'val'
     test_stat_metrics = tangle.test_model(test_single, clients, set_to_use=eval_set)
-    print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set))
+    print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set), print_conf_matrix=True)
     writer(num_round, test_stat_metrics, eval_set)
 
 
-def print_metrics(metrics, weights, prefix=''):
+def print_metrics(metrics, weights, prefix='', print_conf_matrix=False):
     """Prints weighted averages of the given metrics.
 
     Args:
@@ -206,6 +206,8 @@ def print_metrics(metrics, weights, prefix=''):
     metric_names = metrics_writer.get_metrics_names(metrics)
     to_ret = None
     for metric in metric_names:
+        if metric == 'conf_matrix':
+            continue
         ordered_metric = [metrics[c][metric] for c in sorted(metrics)]
         print('%s: %g, 10th percentile: %g, 50th percentile: %g, 90th percentile %g' \
               % (prefix + metric,
@@ -213,6 +215,16 @@ def print_metrics(metrics, weights, prefix=''):
                  np.percentile(ordered_metric, 10),
                  np.percentile(ordered_metric, 50),
                  np.percentile(ordered_metric, 90)))
+
+    # print confusion matrix
+    if print_conf_matrix:
+        if 'conf_matrix' in metric_names:
+            full_conf_matrix = sum([metrics[c]['conf_matrix'] for c in sorted(metrics)])
+            print(full_conf_matrix)
+            print(np.sum(full_conf_matrix, axis=0))
+            np.savetxt('conf_matrix.txt', full_conf_matrix, fmt='%4u')
+
+
 
 if __name__ == '__main__':
     main()
