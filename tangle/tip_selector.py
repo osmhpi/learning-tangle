@@ -7,8 +7,9 @@ import numpy as np
 ALPHA = 0.001
 
 class TipSelector:
-    def __init__(self, tangle):
+    def __init__(self, tangle, num_tips=2):
         self.tangle = tangle
+        self.num_tips = num_tips
 
         # Build a map of transactions that directly approve a given transaction
         self.approving_transactions = {x: [] for x in self.tangle.transactions}
@@ -24,14 +25,11 @@ class TipSelector:
         # The docs say entry_point = latestSolidMilestone - depth. Ignoring these concepts for now.
         entry_point = self.tangle.genesis
 
-        entry_point_trunk = entry_point
-        entry_point_branch = entry_point  # reference or entry_point, according to the docs
+        tips = []
+        for i in range(self.num_tips):
+             tips.append(self.walk(entry_point, self.ratings, self.approving_transactions))
 
-        # TODO: I don't understand the difference between trunk and branch
-        trunk = self.walk(entry_point_trunk, self.ratings, self.approving_transactions)
-        branch = self.walk(entry_point_branch, self.ratings, self.approving_transactions)
-
-        return trunk, branch
+        return tips
 
     def compute_ratings(self, approving_transactions):
         rating = {}

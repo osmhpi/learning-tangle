@@ -109,7 +109,9 @@ def main():
         c_ids, c_groups, c_num_samples = server.get_clients_info(server.selected_clients)
 
         # Simulate server model training on selected clients' data
-        sys_metrics = tangle.run_nodes(train_single, server.selected_clients, i+1, num_epochs=args.num_epochs, batch_size=args.batch_size, malicious_clients=malicious_clients, malicious_type=malicious_type)
+        sys_metrics = tangle.run_nodes(train_single, server.selected_clients, i+1,
+                                       num_epochs=args.num_epochs, batch_size=args.batch_size,
+                                       malicious_clients=malicious_clients, malicious_type=malicious_type)
         # norm.append(np.array(norm_this_round).mean(axis=0).tolist() if len(norm_this_round) else [])
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 
@@ -220,8 +222,7 @@ def print_metrics(metrics, weights, prefix='', print_conf_matrix=False):
     if print_conf_matrix:
         if 'conf_matrix' in metric_names:
             full_conf_matrix = sum([metrics[c]['conf_matrix'] for c in sorted(metrics)])
-            print(full_conf_matrix)
-            print(np.sum(full_conf_matrix, axis=0))
+            #print(full_conf_matrix)
             np.savetxt('conf_matrix.txt', full_conf_matrix, fmt='%4u')
 
 

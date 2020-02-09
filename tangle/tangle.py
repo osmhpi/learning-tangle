@@ -17,12 +17,12 @@ class Tangle:
         self.genesis = genesis
         if current_process().name == 'MainProcess':
             #os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-            self.process_pool = Pool(10)
+            self.process_pool = Pool(2)
 
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
 
-    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10, malicious_clients=None, malicious_type=MaliciousType.NONE):
+    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10, num_tips=2, malicious_clients=None, malicious_type=MaliciousType.NONE):
         norm_this_round = []
         new_transactions = []
 

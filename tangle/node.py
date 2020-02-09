@@ -13,14 +13,14 @@ class Node:
     self.malicious = malicious
 
   def choose_tips(self, selector=None):
-      if len(self.tangle.transactions) < 2:
-          return self.tangle.transactions[self.tangle.genesis], self.tangle.transactions[self.tangle.genesis]
-
       if selector is None:
           selector = TipSelector(self.tangle)
-      tip1, tip2 = selector.tip_selection()
 
-      return self.tangle.transactions[tip1], self.tangle.transactions[tip2]
+      if len(self.tangle.transactions) < selector.num_tips:
+          return [self.tangle.transactions[self.tangle.genesis] for i in range(selector.num_tips)]
+      tips = selector.tip_selection()
+
+      return [self.tangle.transactions[tip] for tip in tips]
 
   def compute_confidence(self, selector=None, approved_transactions_cache={}):
       num_sampling_rounds = 10
@@ -39,13 +39,13 @@ class Node:
           selector = TipSelector(self.tangle)
 
       for i in range(num_sampling_rounds):
-          branch, trunk = self.choose_tips(selector=selector)
-          for tx in approved_transactions(branch.name()):
-              transaction_confidence[tx] += 1
-          for tx in approved_transactions(trunk.name()):
-              transaction_confidence[tx] += 1
+          tips = self.choose_tips(selector=selector)
+          for tip in tips:
+              for tx in approved_transactions(tip.name()):
+                  transaction_confidence[tx] += 1
 
-      return {tx: float(transaction_confidence[tx]) / (num_sampling_rounds * 2) for tx in self.tangle.transactions}
+      # todo vorher hardcoded 2, warum genau?
+      return {tx: float(transaction_confidence[tx]) / (num_sampling_rounds * selector.num_tips) for tx in self.tangle.transactions}
 
   def compute_cumulative_score(self, transactions, approved_transactions_cache={}):
       def compute_approved_transactions(transaction):
@@ -79,10 +79,12 @@ class Node:
       return self.tangle.transactions[best[0]].load_weights()
 
   def average_model_params(self, *params):
-    return [np.array(p).mean(axis=0) for p in zip(*params)]
+    s = sum(params)
+    return sum(params) / len(params)
+    #return [np.array(p).mean(axis=0) for p in zip(params)]
 
-  def process_next_batch(self, num_epochs, batch_size):
-    selector = TipSelector(self.tangle)
+  def process_next_batch(self, num_epochs, batch_size, num_tips=2):
+    selector = TipSelector(self.tangle, num_tips)
 
     # Compute reference metrics
     reference = self.obtain_reference_params(selector=selector)
@@ -90,17 +92,17 @@ class Node:
     c_metrics = self.client.test('test')
 
     # Obtain two tips from the tangle
-    tip1, tip2 = self.choose_tips(selector=selector)
+    tips = self.choose_tips(selector=selector)
 
     if self.malicious == MaliciousType.RANDOM:
         weights = self.client.model.get_params()
         malicious_weights = [np.random.RandomState().normal(size=w.shape) for w in weights]
         print('generated malicious weights')
-        return Transaction(malicious_weights, set([tip1.name(), tip2.name()]), malicious=True), None, None
+        return Transaction(malicious_weights, set([tip.name() for tip in tips]), malicious=True), None, None
     elif self.malicious == MaliciousType.LABELFLIP:
         self.client.model.set_params(reference)
         self.client.train(num_epochs, batch_size)
-        return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()]), malicious=True), None, None
+        return Transaction(self.client.model.get_params(), set([tip.name() for tip in tips]), malicious=True), None, None
     else:
         # Perform averaging
 
@@ -114,12 +116,12 @@ class Node:
         # in order to prevent over-fitting.
 
         # Here: simple unweighted average
-        averaged_weights = self.average_model_params(tip1.load_weights(), tip2.load_weights())
+        averaged_weights = self.average_model_params(*[tip.load_weights() for tip in tips])
         self.client.model.set_params(averaged_weights)
         comp, num_samples, update = self.client.train(num_epochs, batch_size)
 
         c_averaged_model_metrics = self.client.test('test')
         if c_averaged_model_metrics['loss'] < c_metrics['loss']:
-            return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()])), c_averaged_model_metrics, comp
+            return Transaction(self.client.model.get_params(), set([tip.name() for tip in tips])), c_averaged_model_metrics, comp
 
     return None, None, None
