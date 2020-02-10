@@ -163,7 +163,7 @@ def setup_clients(dataset, model=None, use_val_set=False, malicious_fraction=0, 
     if malicious_type == MaliciousType.LABELFLIP:
         for client in clients[:num_malicious_clients]:
             # flip labels
-            client.train_data['y'] = [FLIP_TO_CLASS if y == FLIP_FROM_CLASS else y for y in client.train_data['y']]
+            client.train_data['y'] = [FLIP_TO_CLASS for y in client.train_data['y'] if y == FLIP_FROM_CLASS]
 
     return clients, malicious_clients
 
