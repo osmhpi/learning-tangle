@@ -115,6 +115,10 @@ def main():
         # norm.append(np.array(norm_this_round).mean(axis=0).tolist() if len(norm_this_round) else [])
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 
+        # Update global metrics
+        # Todo: Add global accuracy & loss to json files
+        #global_accuracy.append(sys_metrics)
+
         # Update tangle on disk
         tangle.save(i+1, global_loss, global_accuracy, norm)
 

@@ -7,9 +7,8 @@ import numpy as np
 ALPHA = 0.001
 
 class TipSelector:
-    def __init__(self, tangle, num_tips=2):
+    def __init__(self, tangle):
         self.tangle = tangle
-        self.num_tips = num_tips
 
         # Build a map of transactions that directly approve a given transaction
         self.approving_transactions = {x: [] for x in self.tangle.transactions}
@@ -19,14 +18,14 @@ class TipSelector:
 
         self.ratings = self.compute_ratings(self.approving_transactions)
 
-    def tip_selection(self):
+    def tip_selection(self, num_tips):
         # https://docs.iota.org/docs/node-software/0.1/iri/concepts/tip-selection
 
         # The docs say entry_point = latestSolidMilestone - depth. Ignoring these concepts for now.
         entry_point = self.tangle.genesis
 
         tips = []
-        for i in range(self.num_tips):
+        for i in range(num_tips):
              tips.append(self.walk(entry_point, self.ratings, self.approving_transactions))
 
         return tips

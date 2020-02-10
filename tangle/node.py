@@ -6,21 +6,44 @@ from .tip_selector import TipSelector
 from .transaction import Transaction
 from .malicious_type import MaliciousType
 
+SELECTED_TIPS = 2
+
 class Node:
   def __init__(self, client, tangle, malicious=MaliciousType.NONE):
     self.client = client
     self.tangle = tangle
     self.malicious = malicious
 
-  def choose_tips(self, selector=None):
+  def choose_tips(self, num_tips=2, sample_size=2, selector=None):
       if selector is None:
           selector = TipSelector(self.tangle)
 
-      if len(self.tangle.transactions) < selector.num_tips:
-          return [self.tangle.transactions[self.tangle.genesis] for i in range(selector.num_tips)]
-      tips = selector.tip_selection()
+      if len(self.tangle.transactions) < num_tips:
+          return [self.tangle.transactions[self.tangle.genesis] for i in range(SELECTED_TIPS)]
+      tips = selector.tip_selection(sample_size)
+      # Todo is it valid to remove duplicates?
+      no_dups = []
+      [no_dups.append(x) for x in tips if x not in no_dups]
+      if len(no_dups) >= num_tips:
+          tips = no_dups
+      tip_txs = [self.tangle.transactions[tip] for tip in tips]
 
-      return [self.tangle.transactions[tip] for tip in tips]
+      # Find best tips
+      if num_tips < sample_size:
+          tip_losses = []
+          loss_cache = {}
+          for tip in tip_txs:
+              if tip.id in loss_cache.keys():
+                  tip_losses.append((tip, loss_cache[tip.id]))
+              else:
+                  self.client.model.set_params(tip.load_weights())
+                  loss = self.client.test('test')['loss']
+                  tip_losses.append((tip, loss))
+                  loss_cache[tip.id] = loss
+          best_tips = sorted(tip_losses, key=lambda tup: tup[1], reverse=False)[:num_tips]
+          tip_txs = [tup[0] for tup in best_tips]
+
+      return tip_txs
 
   def compute_confidence(self, selector=None, approved_transactions_cache={}):
       num_sampling_rounds = 10
@@ -45,7 +68,7 @@ class Node:
                   transaction_confidence[tx] += 1
 
       # todo vorher hardcoded 2, warum genau?
-      return {tx: float(transaction_confidence[tx]) / (num_sampling_rounds * selector.num_tips) for tx in self.tangle.transactions}
+      return {tx: float(transaction_confidence[tx]) / (num_sampling_rounds * 2) for tx in self.tangle.transactions}
 
   def compute_cumulative_score(self, transactions, approved_transactions_cache={}):
       def compute_approved_transactions(transaction):
@@ -83,8 +106,8 @@ class Node:
     return sum(params) / len(params)
     #return [np.array(p).mean(axis=0) for p in zip(params)]
 
-  def process_next_batch(self, num_epochs, batch_size, num_tips=2):
-    selector = TipSelector(self.tangle, num_tips)
+  def process_next_batch(self, num_epochs, batch_size, num_tips=2, sample_size=2):
+    selector = TipSelector(self.tangle)
 
     # Compute reference metrics
     reference = self.obtain_reference_params(selector=selector)
@@ -92,7 +115,7 @@ class Node:
     c_metrics = self.client.test('test')
 
     # Obtain two tips from the tangle
-    tips = self.choose_tips(selector=selector)
+    tips = self.choose_tips(num_tips=num_tips, sample_size=sample_size, selector=selector)
 
     if self.malicious == MaliciousType.RANDOM:
         weights = self.client.model.get_params()
