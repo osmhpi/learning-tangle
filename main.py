@@ -1,6 +1,8 @@
 """Script to run the baselines."""
 import argparse
 import importlib
+from itertools import cycle, islice
+
 import numpy as np
 import os
 import sys
@@ -163,7 +165,9 @@ def setup_clients(dataset, model=None, use_val_set=False, malicious_fraction=0, 
     if malicious_type == MaliciousType.LABELFLIP:
         for client in clients[:num_malicious_clients]:
             # flip labels
+            client_label_counter = len(client.train_data['y'])
             client.train_data['y'] = [FLIP_TO_CLASS for y in client.train_data['y'] if y == FLIP_FROM_CLASS]
+            client.train_data['y'] = list(islice(cycle(client.train_data['y']), client_label_counter))
 
     return clients, malicious_clients
 
