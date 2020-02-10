@@ -74,7 +74,7 @@ class Node:
           {tx: scores[tx] * transaction_confidence[tx] for tx in keys}.items(),
           key=lambda kv: kv[1], reverse=True
       )[0]
-      return self.tangle.transactions[best[0]].load_weights()
+      return best[0], self.tangle.transactions[best[0]].load_weights()
 
   def average_model_params(self, *params):
     return [np.array(p).mean(axis=0) for p in zip(*params)]
@@ -82,7 +82,7 @@ class Node:
   def process_next_batch(self, num_epochs, batch_size):
     selector = TipSelector(self.tangle)
 
-    reference = self.obtain_reference_params(selector=selector)
+    reference_tx, reference = self.obtain_reference_params(selector=selector)
     self.client.model.set_params(reference)
     c_metrics = self.client.test('test')
 
@@ -110,4 +110,3 @@ class Node:
         return Transaction(self.client.model.get_params(), set([tip1.name(), tip2.name()])), c_averaged_model_metrics, comp
 
     return None, None, None
-

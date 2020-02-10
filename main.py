@@ -124,7 +124,7 @@ def online(clients):
 
 def random_sample(clients, sample_size):
     """Choose a subset of clients to perform the model validation. Only to be used during development to speed up experiment run times"""
-    return np.random.choice(clients, sample_size, replace=False)
+    return np.random.choice(clients, min(sample_size, len(clients)), replace=False)
 
 def create_clients(users, groups, train_data, test_data, model):
     if len(groups) == 0:
