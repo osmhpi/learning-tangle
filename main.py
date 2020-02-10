@@ -12,7 +12,6 @@ import tensorflow as tf
 import multiprocessing as mp
 
 sys.path.insert(1, './leaf/models')
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import metrics.writer as metrics_writer
 
@@ -31,6 +30,10 @@ SYS_METRICS_PATH = 'metrics/sys_metrics.csv'
 
 FLIP_FROM_CLASS = 3
 FLIP_TO_CLASS = 8
+
+USE_GPU = True
+if not USE_GPU:
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 def main():
     mp.set_start_method('spawn')
@@ -113,7 +116,7 @@ def main():
         # Simulate server model training on selected clients' data
         sys_metrics = tangle.run_nodes(train_single, server.selected_clients, i+1,
                                        num_epochs=args.num_epochs, batch_size=args.batch_size,
-                                       malicious_clients=malicious_clients, malicious_type=malicious_type)
+                                       malicious_clients=malicious_clients, malicious_type=malicious_type, use_gpu=USE_GPU)
         # norm.append(np.array(norm_this_round).mean(axis=0).tolist() if len(norm_this_round) else [])
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 

@@ -80,7 +80,7 @@ class Node:
 
       return {tx: len(compute_approved_transactions(tx)) for tx in transactions}
 
-  def obtain_reference_params(self, selector=None):
+  def obtain_reference_params(self, avg_top=1, selector=None):
       # Establish the 'current best'/'reference' weights from the tangle
 
       approved_transactions_cache = {}
@@ -98,8 +98,8 @@ class Node:
       best = sorted(
           {tx: scores[tx] * transaction_confidence[tx] for tx in keys}.items(),
           key=lambda kv: kv[1], reverse=True
-      )[0]
-      return self.tangle.transactions[best[0]].load_weights()
+      )[:avg_top]
+      return self.average_model_params(*[self.tangle.transactions[elem[0]].load_weights() for elem in best])
 
   def average_model_params(self, *params):
     s = sum(params)
@@ -123,7 +123,9 @@ class Node:
         print('generated malicious weights')
         return Transaction(malicious_weights, set([tip.name() for tip in tips]), malicious=True), None, None
     elif self.malicious == MaliciousType.LABELFLIP:
-        self.client.model.set_params(reference)
+        # Todo Choose tips or reference model?
+        averaged_weights = self.average_model_params(*[tip.load_weights() for tip in tips])
+        self.client.model.set_params(averaged_weights)
         self.client.train(num_epochs, batch_size)
         return Transaction(self.client.model.get_params(), set([tip.name() for tip in tips]), malicious=True), None, None
     else:

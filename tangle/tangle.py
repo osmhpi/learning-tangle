@@ -22,7 +22,7 @@ class Tangle:
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
 
-    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10, malicious_clients=None, malicious_type=MaliciousType.NONE):
+    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10, malicious_clients=None, malicious_type=MaliciousType.NONE, use_gpu=False):
         norm_this_round = []
         new_transactions = []
 
@@ -31,9 +31,13 @@ class Tangle:
                    BYTES_READ_KEY: 0,
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
-        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1, (client.id in malicious_clients), malicious_type] for client in clients]
-
-        results = self.process_pool.starmap(train_fn, train_params)
+        if use_gpu:
+            results = []
+            for client in clients:
+                results.append(train_fn(client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1, (client.id in malicious_clients), malicious_type))
+        else:
+            train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1, (client.id in malicious_clients), malicious_type] for client in clients]
+            results = self.process_pool.starmap(train_fn, train_params)
 
         for tx, metrics, comp, client_id, client_sys_metrics in results:
             if tx is None:
@@ -51,12 +55,16 @@ class Tangle:
 
         return sys_metrics
 
-    def test_model(self, test_fn, clients_to_test, set_to_use='test'):
+    def test_model(self, test_fn, clients_to_test, set_to_use='test', use_gpu=False):
         metrics = {}
 
-        test_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use] for client in clients_to_test]
-
-        results = self.process_pool.starmap(test_fn, test_params)
+        if use_gpu:
+            results = []
+            for client in clients_to_test:
+                results.append(test_fn(client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use))
+        else:
+            test_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use] for client in clients_to_test]
+            results = self.process_pool.starmap(test_fn, test_params)
 
         for client, c_metrics in results:
             metrics[client] = c_metrics
