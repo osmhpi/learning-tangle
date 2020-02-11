@@ -4,15 +4,15 @@ import sys
 
 from .tip_selector import TipSelector
 from .transaction import Transaction
-from .malicious_type import MaliciousType
+from .poison_type import PoisonType
 
 SELECTED_TIPS = 2
 
 class Node:
-  def __init__(self, client, tangle, malicious=MaliciousType.NONE):
+  def __init__(self, client, tangle, poison_type=PoisonType.NONE):
     self.client = client
     self.tangle = tangle
-    self.malicious = malicious
+    self.poison_type = poison_type
 
   def choose_tips(self, num_tips=2, sample_size=2, selector=None):
       if selector is None:
@@ -117,12 +117,12 @@ class Node:
     # Obtain two tips from the tangle
     tips = self.choose_tips(num_tips=num_tips, sample_size=sample_size, selector=selector)
 
-    if self.malicious == MaliciousType.RANDOM:
+    if self.poison_type == PoisonType.RANDOM:
         weights = self.client.model.get_params()
         malicious_weights = [np.random.RandomState().normal(size=w.shape) for w in weights]
         print('generated malicious weights')
         return Transaction(malicious_weights, set([tip.name() for tip in tips]), malicious=True), None, None
-    elif self.malicious == MaliciousType.LABELFLIP:
+    elif self.poison_type == PoisonType.LABELFLIP:
         # Todo Choose tips or reference model?
         averaged_weights = self.average_model_params(*[tip.load_weights() for tip in tips])
         self.client.model.set_params(averaged_weights)

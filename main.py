@@ -10,6 +10,7 @@ import random
 import math
 import tensorflow as tf
 import multiprocessing as mp
+import timeit
 
 sys.path.insert(1, './leaf/models')
 
@@ -20,7 +21,7 @@ from client import Client
 from server import Server
 from model import ServerModel
 
-from tangle import Tangle, Transaction, MaliciousType, train_single, test_single
+from tangle import Tangle, Transaction, PoisonType, train_single, test_single
 
 from utils.args import parse_args
 from utils.model_utils import read_data
@@ -31,9 +32,7 @@ SYS_METRICS_PATH = 'metrics/sys_metrics.csv'
 FLIP_FROM_CLASS = 3
 FLIP_TO_CLASS = 8
 
-USE_GPU = True
-if not USE_GPU:
-    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 def main():
     mp.set_start_method('spawn')
@@ -94,8 +93,8 @@ def main():
     server = Server(client_model)
 
     # Create clients
-    clients, malicious_clients = setup_clients(args.dataset, client_model, args.use_val_set, args.malicious_fraction, MaliciousType[args.malicious_type])
-    malicious_type = MaliciousType[args.malicious_type]
+    poison_type = PoisonType[args.poison_type]
+    clients, malicious_clients = setup_clients(args.dataset, client_model, args.use_val_set, args.poison_fraction, poison_type)
     client_ids, client_groups, client_num_samples = server.get_clients_info(clients)
     print('Clients in Total: %d' % len(clients))
 
@@ -103,20 +102,29 @@ def main():
     print('--- Random Initialization ---')
     stat_writer_fn = get_stat_writer_function(client_ids, client_groups, client_num_samples, args)
     sys_writer_fn = get_sys_writer_function(args)
+    start_time = timeit.default_timer()
     print_stats(0, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
+
+    # Set up execution timing
+    avg_eval_duration = timeit.default_timer() - start_time
+    eval_count = 1
+    avg_round_duration = 1000
 
     # Simulate training
     for i in range(start_from_round, num_rounds):
-        print('--- Round %d of %d: Training %d Clients ---' % (i + 1, num_rounds, clients_per_round))
+        rounds_remaining = num_rounds - i
+        time_remaining = avg_eval_duration * (rounds_remaining // eval_every) + avg_round_duration * rounds_remaining
+        print('--- Round %d of %d: Training %d Clients --- Time remaining: ~ %d min' % (i + 1, num_rounds, clients_per_round, time_remaining // 60))
+        start_time = timeit.default_timer()
 
         # Select clients to train this round
         server.select_clients(i, online(clients), num_clients=clients_per_round)
         c_ids, c_groups, c_num_samples = server.get_clients_info(server.selected_clients)
 
         # Simulate server model training on selected clients' data
-        sys_metrics = tangle.run_nodes(train_single, server.selected_clients, i+1,
+        sys_metrics = tangle.run_nodes(train_single, server.selected_clients, i + 1,
                                        num_epochs=args.num_epochs, batch_size=args.batch_size,
-                                       malicious_clients=malicious_clients, malicious_type=malicious_type, use_gpu=USE_GPU)
+                                       malicious_clients=malicious_clients, poison_type=poison_type)
         # norm.append(np.array(norm_this_round).mean(axis=0).tolist() if len(norm_this_round) else [])
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 
@@ -127,11 +135,15 @@ def main():
         # Update tangle on disk
         tangle.save(i+1, global_loss, global_accuracy, norm)
 
+        avg_round_duration = (avg_round_duration * i / (i+1)) + ((timeit.default_timer() - start_time) / (i+1))
+
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
+            start_time = timeit.default_timer()
             print_stats(i + 1, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
+            eval_count = eval_count + 1
+            avg_eval_duration = (avg_eval_duration * (eval_count-1) / eval_count) + ((timeit.default_timer() - start_time) / eval_count)
 
-    #compute_confusion_matrix()
     # Close models
     # server.close_model()
 
@@ -149,7 +161,7 @@ def create_clients(users, groups, train_data, test_data, model):
     clients = [Client(u, g, train_data[u], test_data[u], model) for u, g in zip(users, groups)]
     return clients
 
-def setup_clients(dataset, model=None, use_val_set=False, malicious_fraction=0, malicious_type=MaliciousType.NONE):
+def setup_clients(dataset, model=None, use_val_set=False, poison_fraction=0, poison_type=PoisonType.NONE):
     """Instantiates clients based on given train and test data directories.
 
     Return:
@@ -163,14 +175,23 @@ def setup_clients(dataset, model=None, use_val_set=False, malicious_fraction=0, 
 
     clients = create_clients(users, groups, train_data, test_data, model)
 
-    num_malicious_clients = math.floor(len(clients) * malicious_fraction)
+    num_malicious_clients = math.floor(len(clients) * poison_fraction)
     malicious_clients = [client.id for client in clients[:num_malicious_clients]]
-    if malicious_type == MaliciousType.LABELFLIP:
+    if poison_type == PoisonType.LABELFLIP:
+        # get reference fipping data in case a client possesses no data of class FLIP_FROM_CLASS
+        reference_data = []
+        for j in range(len(clients)):
+            if len([clients[j].train_data['x'][i] for i in range(len(clients[j].train_data['y'])) if clients[j].train_data['y'][i] == FLIP_FROM_CLASS]) > 10:
+                reference_data = [clients[j].train_data['x'][i] for i in range(len(clients[j].train_data['y'])) if clients[j].train_data['y'][i] == FLIP_FROM_CLASS]
+                break
         for client in clients[:num_malicious_clients]:
             # flip labels
             client_label_counter = len(client.train_data['y'])
-            client.train_data['y'] = [FLIP_TO_CLASS for y in client.train_data['y'] if y == FLIP_FROM_CLASS]
-            client.train_data['y'] = list(islice(cycle(client.train_data['y']), client_label_counter))
+            flip_data = [client.train_data['x'][i] for i in range(client_label_counter) if client.train_data['y'][i] == FLIP_FROM_CLASS]
+            if len(flip_data) == 0:
+                flip_data = reference_data
+            client.train_data['x'] = (flip_data * math.ceil(client_label_counter / len(flip_data)))[:client_label_counter]
+            client.train_data['y'] = [FLIP_TO_CLASS] * client_label_counter
 
     return clients, malicious_clients
 

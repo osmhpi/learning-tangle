@@ -9,20 +9,20 @@ from baseline_constants import BYTES_WRITTEN_KEY, BYTES_READ_KEY, LOCAL_COMPUTAT
 
 from .transaction import Transaction
 from .node import Node
-from .malicious_type import MaliciousType
+from .poison_type import PoisonType
 
 class Tangle:
     def __init__(self, transactions, genesis):
         self.transactions = transactions
         self.genesis = genesis
         if current_process().name == 'MainProcess':
-            #os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-            self.process_pool = Pool(2)
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+            self.process_pool = Pool(10)
 
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
 
-    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10, malicious_clients=None, malicious_type=MaliciousType.NONE, use_gpu=False):
+    def run_nodes(self, train_fn, clients, rnd, num_epochs=1, batch_size=10, malicious_clients=None, poison_type=PoisonType.NONE):
         norm_this_round = []
         new_transactions = []
 
@@ -31,13 +31,8 @@ class Tangle:
                    BYTES_READ_KEY: 0,
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
-        if use_gpu:
-            results = []
-            for client in clients:
-                results.append(train_fn(client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1, (client.id in malicious_clients), malicious_type))
-        else:
-            train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd-1, (client.id in malicious_clients), malicious_type] for client in clients]
-            results = self.process_pool.starmap(train_fn, train_params)
+        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd - 1, (client.id in malicious_clients), poison_type] for client in clients]
+        results = self.process_pool.starmap(train_fn, train_params)
 
         for tx, metrics, comp, client_id, client_sys_metrics in results:
             if tx is None:
@@ -55,16 +50,11 @@ class Tangle:
 
         return sys_metrics
 
-    def test_model(self, test_fn, clients_to_test, set_to_use='test', use_gpu=False):
+    def test_model(self, test_fn, clients_to_test, set_to_use='test'):
         metrics = {}
 
-        if use_gpu:
-            results = []
-            for client in clients_to_test:
-                results.append(test_fn(client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use))
-        else:
-            test_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use] for client in clients_to_test]
-            results = self.process_pool.starmap(test_fn, test_params)
+        test_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, set_to_use] for client in clients_to_test]
+        results = self.process_pool.starmap(test_fn, test_params)
 
         for client, c_metrics in results:
             metrics[client] = c_metrics
