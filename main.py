@@ -92,7 +92,7 @@ def main():
     print('--- Random Initialization ---')
     stat_writer_fn = get_stat_writer_function(client_ids, client_groups, client_num_samples, args)
     sys_writer_fn = get_sys_writer_function(args)
-    print_stats(0, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
+    print_stats(0, tangle, random_sample(clients, int(len(clients) * 0.1)), client_num_samples, args, stat_writer_fn, args.use_val_set)
 
     # Simulate training
     for i in range(start_from_round, num_rounds):
@@ -112,7 +112,7 @@ def main():
 
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
-            print_stats(i + 1, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
+            print_stats(i + 1, tangle, random_sample(clients, int(len(clients) * 0.1)), client_num_samples, args, stat_writer_fn, args.use_val_set)
 
 
     # Close models
