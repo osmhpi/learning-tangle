@@ -73,12 +73,14 @@ def main():
     global_accuracy = [],
     norm = []
 
+    tangle_tag = f'{clients_per_round}_clients_'
+
     if start_from_round == 0:
         genesis = Transaction(client_model.get_params(), [], tag=0)
         tangle = Tangle({genesis.name(): genesis}, genesis.name())
-        tangle.save(0, global_loss, global_accuracy, norm)
+        tangle.save(tangle_tag + str(0), global_loss, global_accuracy, norm)
     else:
-        tangle = Tangle.fromfile(start_from_round)
+        tangle = Tangle.fromfile(tangle_tag + str(start_from_round))
 
     # Create server
     server = Server(client_model)
@@ -108,7 +110,7 @@ def main():
         sys_writer_fn(i + 1, c_ids, sys_metrics, c_groups, c_num_samples)
 
         # Update tangle on disk
-        tangle.save(i+1, global_loss, global_accuracy, norm)
+        tangle.save(tangle_tag + str(i+1), global_loss, global_accuracy, norm)
 
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
