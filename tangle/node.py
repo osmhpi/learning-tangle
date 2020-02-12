@@ -21,7 +21,7 @@ class Node:
       if len(self.tangle.transactions) < num_tips:
           return [self.tangle.transactions[self.tangle.genesis] for i in range(SELECTED_TIPS)]
       tips = selector.tip_selection(sample_size)
-      # Todo is it valid to remove duplicates?
+
       no_dups = []
       [no_dups.append(x) for x in tips if x not in no_dups]
       if len(no_dups) >= num_tips:
@@ -67,7 +67,6 @@ class Node:
               for tx in approved_transactions(tip.name()):
                   transaction_confidence[tx] += 1
 
-      # todo vorher hardcoded 2, warum genau?
       return {tx: float(transaction_confidence[tx]) / (num_sampling_rounds * 2) for tx in self.tangle.transactions}
 
   def compute_cumulative_score(self, transactions, approved_transactions_cache={}):
@@ -99,7 +98,7 @@ class Node:
           {tx: scores[tx] * transaction_confidence[tx] for tx in keys}.items(),
           key=lambda kv: kv[1], reverse=True
       )[:avg_top]
-      return self.average_model_params(*[self.tangle.transactions[elem[0]].load_weights() for elem in best])
+      return [elem[0] for elem in best], self.average_model_params(*[self.tangle.transactions[elem[0]].load_weights() for elem in best])
 
   def average_model_params(self, *params):
     s = sum(params)
@@ -110,7 +109,7 @@ class Node:
     selector = TipSelector(self.tangle)
 
     # Compute reference metrics
-    reference = self.obtain_reference_params(selector=selector)
+    reference_txs, reference = self.obtain_reference_params(selector=selector)
     self.client.model.set_params(reference)
     c_metrics = self.client.test('test')
 
@@ -127,6 +126,7 @@ class Node:
         averaged_weights = self.average_model_params(*[tip.load_weights() for tip in tips])
         self.client.model.set_params(averaged_weights)
         self.client.train(num_epochs, batch_size)
+        print('trained on label-flip data')
         return Transaction(self.client.model.get_params(), set([tip.name() for tip in tips]), malicious=True), None, None
     else:
         # Perform averaging

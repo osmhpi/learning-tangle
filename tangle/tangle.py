@@ -34,7 +34,7 @@ class Tangle:
         train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd - 1, (client.id in malicious_clients), poison_type] for client in clients]
         results = self.process_pool.starmap(train_fn, train_params)
 
-        for tx, metrics, comp, client_id, client_sys_metrics in results:
+        for tx, metrics, client_id, client_sys_metrics in results:
             if tx is None:
                 continue
 

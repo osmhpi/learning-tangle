@@ -94,6 +94,7 @@ def main():
 
     # Create clients
     poison_type = PoisonType[args.poison_type]
+    poison_from = args.poison_from - 1 # We define the first round as number 1, but the loop counter starts with 0
     clients, malicious_clients = setup_clients(args.dataset, client_model, args.use_val_set, args.poison_fraction, poison_type)
     client_ids, client_groups, client_num_samples = server.get_clients_info(clients)
     print('Clients in Total: %d' % len(clients))
@@ -103,7 +104,7 @@ def main():
     stat_writer_fn = get_stat_writer_function(client_ids, client_groups, client_num_samples, args)
     sys_writer_fn = get_sys_writer_function(args)
     start_time = timeit.default_timer()
-    print_stats(0, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
+    print_stats(0, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
 
     # Set up execution timing
     avg_eval_duration = timeit.default_timer() - start_time
@@ -118,7 +119,12 @@ def main():
         start_time = timeit.default_timer()
 
         # Select clients to train this round
-        server.select_clients(i, online(clients), num_clients=clients_per_round)
+        if i >= poison_from:
+            if i == poison_from:
+                print('Started poisoning in round %d' % (i + 1))
+            server.select_clients(i, online(clients), num_clients=clients_per_round)
+        else:
+            server.select_clients(i, online(clients, exclude_clients=malicious_clients), num_clients=clients_per_round)
         c_ids, c_groups, c_num_samples = server.get_clients_info(server.selected_clients)
 
         # Simulate server model training on selected clients' data
@@ -140,20 +146,23 @@ def main():
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
             start_time = timeit.default_timer()
-            print_stats(i + 1, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set)
+            print_stats(i + 1, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
             eval_count = eval_count + 1
             avg_eval_duration = (avg_eval_duration * (eval_count-1) / eval_count) + ((timeit.default_timer() - start_time) / eval_count)
 
     # Close models
     # server.close_model()
 
-def online(clients):
-    """We assume all users are always online."""
-    return clients
+def online(clients, exclude_clients=None):
+    """We assume all users are always online. However we abuse this method to avoid selecting poisoning clients """
+    if exclude_clients is not None:
+        return [client for client in clients if client.id not in exclude_clients]
+    else:
+        return clients
 
 def random_sample(clients, sample_size):
     """Choose a subset of clients to perform the model validation. Only to be used during development to speed up experiment run times"""
-    return np.random.choice(clients, sample_size, replace=False)
+    return np.random.choice(clients, min(sample_size, len(clients)), replace=False)
 
 def create_clients(users, groups, train_data, test_data, model):
     if len(groups) == 0:
@@ -215,7 +224,7 @@ def get_sys_writer_function(args):
 
 
 def print_stats(
-    num_round, tangle, clients, num_samples, args, writer, use_val_set):
+    num_round, tangle, clients, num_samples, args, writer, use_val_set, print_conf_matrix):
 
     train_stat_metrics = tangle.test_model(test_single, clients, set_to_use='train')
     print_metrics(train_stat_metrics, num_samples, prefix='train_')
@@ -223,7 +232,7 @@ def print_stats(
 
     eval_set = 'test' if not use_val_set else 'val'
     test_stat_metrics = tangle.test_model(test_single, clients, set_to_use=eval_set)
-    print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set), print_conf_matrix=True)
+    print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set), print_conf_matrix=print_conf_matrix)
     writer(num_round, test_stat_metrics, eval_set)
 
 
@@ -254,6 +263,7 @@ def print_metrics(metrics, weights, prefix='', print_conf_matrix=False):
     if print_conf_matrix:
         if 'conf_matrix' in metric_names:
             full_conf_matrix = sum([metrics[c]['conf_matrix'] for c in sorted(metrics)])
+            print('Misclassification percentage: %.2f%%' % (full_conf_matrix[FLIP_FROM_CLASS, FLIP_TO_CLASS] / np.sum(full_conf_matrix[FLIP_FROM_CLASS]) * 100))
             #print(full_conf_matrix)
             np.savetxt('conf_matrix.txt', full_conf_matrix, fmt='%4u')
 

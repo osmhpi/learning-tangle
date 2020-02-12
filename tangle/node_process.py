@@ -61,7 +61,7 @@ def train_single(u, g, flops, seed, train_data, eval_data, tangle_name, maliciou
     sys_metrics[BYTES_WRITTEN_KEY] += node.client.model.size
     sys_metrics[LOCAL_COMPUTATIONS_KEY] = comp
 
-    return tx, metrics, comp, u, sys_metrics
+    return tx, metrics, u, sys_metrics
 
 def test_single(u, g, flops, seed, train_data, eval_data, tangle_name, set_to_use):
     # Suppress tf warnings
@@ -75,6 +75,22 @@ def test_single(u, g, flops, seed, train_data, eval_data, tangle_name, set_to_us
 
     tangle = Tangle.fromfile(tangle_name)
     node = Node(client, tangle)
-    reference = node.obtain_reference_params()
+    reference_txs, reference = node.obtain_reference_params()
     node.client.model.set_params(reference)
-    return u, node.client.test(set_to_use)
+    metrics = node.client.test(set_to_use)
+
+    metrics['consensus_round'] = np.average([tangle.transactions[tx].tag for tx in reference_txs])
+
+    metrics['norm'] = 0
+    parents = [tangle.transactions[tx].parents for tx in reference_txs]
+    parents = set.union(*parents)
+    if len(parents) == 2:
+        # Todo: maybe adapt to more than 2 parents
+        p1, p2 = parents
+        pw1 = tangle.transactions[p1].load_weights()
+        pw2 = tangle.transactions[p2].load_weights()
+        partial_norms = [np.linalg.norm(np.array(weights)[0] - np.array(weights)[1]) for weights in zip(pw1, pw2)]
+        metrics['norm'] = np.linalg.norm(partial_norms)
+
+    return u, metrics
+
