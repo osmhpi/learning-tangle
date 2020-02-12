@@ -31,7 +31,7 @@ class Tangle:
                    BYTES_READ_KEY: 0,
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
-        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd - 1, (client.id in malicious_clients), poison_type] for client in clients]
+        train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, self.name, (client.id in malicious_clients), poison_type] for client in clients]
 
         results = self.process_pool.starmap(train_fn, train_params)
 
