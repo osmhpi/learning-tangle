@@ -85,7 +85,6 @@ def test_single(u, g, flops, seed, train_data, eval_data, tangle_name, set_to_us
     parents = [tangle.transactions[tx].parents for tx in reference_txs]
     parents = set.union(*parents)
     if len(parents) == 2:
-        # Todo: maybe adapt to more than 2 parents
         p1, p2 = parents
         pw1 = tangle.transactions[p1].load_weights()
         pw2 = tangle.transactions[p2].load_weights()
@@ -93,4 +92,3 @@ def test_single(u, g, flops, seed, train_data, eval_data, tangle_name, set_to_us
         metrics['norm'] = np.linalg.norm(partial_norms)
 
     return u, metrics
-

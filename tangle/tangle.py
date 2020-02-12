@@ -32,6 +32,7 @@ class Tangle:
                    LOCAL_COMPUTATIONS_KEY: 0} for c in clients}
 
         train_params = [[client.id, client.group, client.model.flops, random.randint(0, 4294967295), client.train_data, client.eval_data, rnd - 1, (client.id in malicious_clients), poison_type] for client in clients]
+
         results = self.process_pool.starmap(train_fn, train_params)
 
         for tx, metrics, client_id, client_sys_metrics in results:
@@ -61,20 +62,20 @@ class Tangle:
 
         return metrics
 
-    def save(self, sequence_no, global_loss, global_accuracy, norm):
+    def save(self, tangle_name, global_loss, global_accuracy, norm):
         n = [{'name': t.name(), 'time': t.tag, 'malicious': t.malicious, 'parents': list(t.parents)} for _, t in self.transactions.items()]
 
-        with open(f'tangle_data/tangle_{sequence_no}.json', 'w') as outfile:
+        with open(f'tangle_data/tangle_{tangle_name}.json', 'w') as outfile:
             json.dump({'nodes': n, 'genesis': self.genesis, 'global_loss': global_loss, 'global_accuracy': global_accuracy, 'norm': norm}, outfile)
 
-        self.name = sequence_no
+        self.name = tangle_name
 
     @classmethod
-    def fromfile(cls, sequence_no):
-      with open(f'tangle_data/tangle_{sequence_no}.json', 'r') as tanglefile:
+    def fromfile(cls, tangle_name):
+      with open(f'tangle_data/tangle_{tangle_name}.json', 'r') as tanglefile:
           t = json.load(tanglefile)
 
       transactions = {n['name']: Transaction(None, set(n['parents']), n['name'], n['time'], n['malicious']) for n in t['nodes']}
       tangle = cls(transactions, t['genesis'])
-      tangle.name = sequence_no
+      tangle.name = tangle_name
       return tangle

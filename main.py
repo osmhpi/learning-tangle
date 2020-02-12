@@ -82,12 +82,14 @@ def main():
     global_accuracy = [],
     norm = []
 
+    tangle_tag = f'{clients_per_round}_clients_'
+
     if start_from_round == 0:
         genesis = Transaction(client_model.get_params(), [], tag=0)
         tangle = Tangle({genesis.name(): genesis}, genesis.name())
-        tangle.save(0, global_loss, global_accuracy, norm)
+        tangle.save(tangle_tag + str(0), global_loss, global_accuracy, norm)
     else:
-        tangle = Tangle.fromfile(start_from_round)
+        tangle = Tangle.fromfile(tangle_tag + str(start_from_round))
 
     # Create server
     server = Server(client_model)
@@ -104,7 +106,7 @@ def main():
     stat_writer_fn = get_stat_writer_function(client_ids, client_groups, client_num_samples, args)
     sys_writer_fn = get_sys_writer_function(args)
     start_time = timeit.default_timer()
-    print_stats(0, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
+    print_stats(0, tangle, random_sample(clients, int(len(clients) * 0.1)), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
 
     # Set up execution timing
     avg_eval_duration = timeit.default_timer() - start_time
@@ -139,14 +141,14 @@ def main():
         #global_accuracy.append(sys_metrics)
 
         # Update tangle on disk
-        tangle.save(i+1, global_loss, global_accuracy, norm)
+        tangle.save(tangle_tag + str(i+1), global_loss, global_accuracy, norm)
 
         avg_round_duration = (avg_round_duration * i / (i+1)) + ((timeit.default_timer() - start_time) / (i+1))
 
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
             start_time = timeit.default_timer()
-            print_stats(i + 1, tangle, random_sample(clients, clients_per_round * 10), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
+            print_stats(i + 1, tangle, random_sample(clients, int(len(clients) * 0.1)), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
             eval_count = eval_count + 1
             avg_eval_duration = (avg_eval_duration * (eval_count-1) / eval_count) + ((timeit.default_timer() - start_time) / eval_count)
 
