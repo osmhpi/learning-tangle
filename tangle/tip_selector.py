@@ -95,7 +95,7 @@ class TipSelector:
         # variant for this use case. E.g. choose a transaction that was published by a
         # node with 'similar' characteristics
 
-        rn = random.randint(0, int(sum(weights)))
+        rn = random.uniform(0, sum(weights))
         for i in range(len(approvers)):
             rn -= weights[i]
             if rn <= 0:
