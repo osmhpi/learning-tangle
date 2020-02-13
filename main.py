@@ -122,7 +122,7 @@ def main():
 
         # Select clients to train this round
         if i >= poison_from:
-            if i == poison_from:
+            if i == poison_from and poison_type != PoisonType.NONE:
                 print('Started poisoning in round %d' % (i + 1))
             server.select_clients(i, online(clients), num_clients=clients_per_round)
         else:

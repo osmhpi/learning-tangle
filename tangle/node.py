@@ -3,6 +3,7 @@ import tensorflow as tf
 import sys
 
 from .tip_selector import TipSelector
+from .malicious_tip_selector import MaliciousTipSelector
 from .transaction import Transaction
 from .poison_type import PoisonType
 
@@ -30,18 +31,25 @@ class Node:
 
       # Find best tips
       if num_tips < sample_size:
-          tip_losses = []
-          loss_cache = {}
-          for tip in tip_txs:
-              if tip.id in loss_cache.keys():
-                  tip_losses.append((tip, loss_cache[tip.id]))
-              else:
-                  self.client.model.set_params(tip.load_weights())
-                  loss = self.client.test('test')['loss']
-                  tip_losses.append((tip, loss))
-                  loss_cache[tip.id] = loss
-          best_tips = sorted(tip_losses, key=lambda tup: tup[1], reverse=False)[:num_tips]
-          tip_txs = [tup[0] for tup in best_tips]
+          if self.poison_type == PoisonType.NONE:
+              # Choose tips with lowest test loss
+              tip_losses = []
+              loss_cache = {}
+              for tip in tip_txs:
+                  if tip.id in loss_cache.keys():
+                      tip_losses.append((tip, loss_cache[tip.id]))
+                  else:
+                      self.client.model.set_params(tip.load_weights())
+                      loss = self.client.test('test')['loss']
+                      tip_losses.append((tip, loss))
+                      loss_cache[tip.id] = loss
+              best_tips = sorted(tip_losses, key=lambda tup: tup[1], reverse=False)[:num_tips]
+              tip_txs = [tup[0] for tup in best_tips]
+          else:
+              # Choose primarily poisoned tips, otherwise randomly
+              malicious_tips = [tip_tx for tip_tx in tip_txs if tip_tx.malicious]
+              non_malicious_tips = [tip_tx for tip_tx in tip_txs if not tip_tx.malicious]
+              tip_txs = malicious_tips[:num_tips] + non_malicious_tips[:max(num_tips - len(malicious_tips), 0)]
 
       return tip_txs
 
@@ -106,7 +114,10 @@ class Node:
     #return [np.array(p).mean(axis=0) for p in zip(params)]
 
   def process_next_batch(self, num_epochs, batch_size, num_tips=2, sample_size=2):
-    selector = TipSelector(self.tangle)
+    if self.poison_type == PoisonType.NONE:
+        selector = TipSelector(self.tangle)
+    else:
+        selector = MaliciousTipSelector(self.tangle)
 
     # Compute reference metrics
     reference_txs, reference = self.obtain_reference_params(selector=selector)
