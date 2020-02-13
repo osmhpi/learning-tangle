@@ -107,3 +107,10 @@ class TipSelector:
         highest_rating = max(ratings)
         normalized_ratings = [r - highest_rating for r in ratings]
         return [np.exp(r * ALPHA) for r in normalized_ratings]
+
+    @staticmethod
+    def ratings_to_probability(ratings):
+        # Calculating a probability according to the IOTA randomness blog 
+        # https://blog.iota.org/alpha-d176d7601f1c
+        b = sum(map(lambda r: np.exp(ALPHA * r),ratings))
+        return [np.exp(r * ALPHA) / b for r in ratings]
