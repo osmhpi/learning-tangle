@@ -113,18 +113,18 @@ class Node:
     return sum(params) / len(params)
     #return [np.array(p).mean(axis=0) for p in zip(params)]
 
-  def process_next_batch(self, num_epochs, batch_size, num_tips=2, sample_size=2):
+  def process_next_batch(self, num_epochs, batch_size, num_tips=2, sample_size=2, reference_avg_top=1):
     if self.poison_type == PoisonType.NONE:
         selector = TipSelector(self.tangle)
     else:
         selector = MaliciousTipSelector(self.tangle)
 
     # Compute reference metrics
-    reference_txs, reference = self.obtain_reference_params(selector=selector)
+    reference_txs, reference = self.obtain_reference_params(avg_top=reference_avg_top,selector=selector)
     self.client.model.set_params(reference)
     c_metrics = self.client.test('test')
 
-    # Obtain two tips from the tangle
+    # Obtain number of tips from the tangle
     tips = self.choose_tips(num_tips=num_tips, sample_size=sample_size, selector=selector)
 
     if self.poison_type == PoisonType.RANDOM:

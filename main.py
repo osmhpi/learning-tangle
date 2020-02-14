@@ -148,9 +148,12 @@ def main():
         # Test model
         if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
             start_time = timeit.default_timer()
-            print_stats(i + 1, tangle, random_sample(clients, int(len(clients) * 0.1)), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
+            average_test_metrics = print_stats(i + 1, tangle, random_sample(clients, int(len(clients) * 0.1)), client_num_samples, args, stat_writer_fn, args.use_val_set, (poison_type != PoisonType.NONE))
             eval_count = eval_count + 1
             avg_eval_duration = (avg_eval_duration * (eval_count-1) / eval_count) + ((timeit.default_timer() - start_time) / eval_count)
+            if average_test_metrics['accuracy'] >= args.target_accuracy:
+                print("Reached test_accuracy: %g after %d rounds" % (average_test_metrics['accuracy'], i + 1))
+                break
 
     # Close models
     # server.close_model()
@@ -234,8 +237,10 @@ def print_stats(
 
     eval_set = 'test' if not use_val_set else 'val'
     test_stat_metrics = tangle.test_model(test_single, clients, set_to_use=eval_set)
-    print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set), print_conf_matrix=print_conf_matrix)
+    average_test_metrics = print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set), print_conf_matrix=print_conf_matrix)
     writer(num_round, test_stat_metrics, eval_set)
+    return average_test_metrics
+
 
 
 def print_metrics(metrics, weights, prefix='', print_conf_matrix=False):
@@ -250,16 +255,20 @@ def print_metrics(metrics, weights, prefix='', print_conf_matrix=False):
     ordered_weights = [weights[c] for c in sorted(weights) if c in metrics]
     metric_names = metrics_writer.get_metrics_names(metrics)
     to_ret = None
+    average_metrics = {}
     for metric in metric_names:
         if metric == 'conf_matrix':
             continue
         ordered_metric = [metrics[c][metric] for c in sorted(metrics)]
+
         print('%s: %g, 10th percentile: %g, 50th percentile: %g, 90th percentile %g' \
               % (prefix + metric,
                  np.average(ordered_metric, weights=ordered_weights),
                  np.percentile(ordered_metric, 10),
                  np.percentile(ordered_metric, 50),
                  np.percentile(ordered_metric, 90)))
+        average_metrics[metric] = np.average(ordered_metric, weights=ordered_weights)
+    return average_metrics
 
     # print confusion matrix
     if print_conf_matrix:

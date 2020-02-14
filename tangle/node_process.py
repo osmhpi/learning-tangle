@@ -52,7 +52,7 @@ def train_single(u, g, flops, seed, train_data, eval_data, tangle_name, maliciou
         node = Node(client, tangle)
 
     args = parse_args()
-    tx, metrics, comp = node.process_next_batch(args.num_epochs, args.batch_size, args.num_tips, args.sample_size)
+    tx, metrics, comp = node.process_next_batch(args.num_epochs, args.batch_size, args.num_tips, args.sample_size, args.reference_avg_top)
 
     sys_metrics = {BYTES_WRITTEN_KEY: 0,
                    BYTES_READ_KEY: 0,
