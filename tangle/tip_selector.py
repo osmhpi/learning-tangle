@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-# https://docs.iota.org/docs/iri/0.1/references/iri-configuration-options#alpha
+# https://docs.iota.org/docs/node-software/0.1/iri/references/iri-configuration-options
 ALPHA = 0.001
 
 class TipSelector:
@@ -110,7 +110,7 @@ class TipSelector:
 
     @staticmethod
     def ratings_to_probability(ratings):
-        # Calculating a probability according to the IOTA randomness blog 
+        # Calculating a probability according to the IOTA randomness blog
         # https://blog.iota.org/alpha-d176d7601f1c
         b = sum(map(lambda r: np.exp(ALPHA * r),ratings))
         return [np.exp(r * ALPHA) / b for r in ratings]
