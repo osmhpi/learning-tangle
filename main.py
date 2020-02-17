@@ -232,18 +232,22 @@ def print_stats(
     num_round, tangle, clients, num_samples, args, writer, use_val_set, print_conf_matrix):
 
     train_stat_metrics = tangle.test_model(test_single, clients, set_to_use='train')
-    print_metrics(train_stat_metrics, num_samples, prefix='train_')
+    print_metrics(train_stat_metrics, num_samples, num_round, prefix='train_')
     writer(num_round, train_stat_metrics, 'train')
 
     eval_set = 'test' if not use_val_set else 'val'
     test_stat_metrics = tangle.test_model(test_single, clients, set_to_use=eval_set)
-    average_test_metrics = print_metrics(test_stat_metrics, num_samples, prefix='{}_'.format(eval_set), print_conf_matrix=print_conf_matrix)
+    average_test_metrics = print_metrics(test_stat_metrics, num_samples, num_round, prefix='{}_'.format(eval_set), print_conf_matrix=print_conf_matrix)
     writer(num_round, test_stat_metrics, eval_set)
+
+    with open('results.txt', 'a+') as file:
+        file.write('Round %d \n' % num_round)
+        file.write(str(average_test_metrics) + '\n')
     return average_test_metrics
 
 
 
-def print_metrics(metrics, weights, prefix='', print_conf_matrix=False):
+def print_metrics(metrics, weights, num_round, prefix='', print_conf_matrix=False):
     """Prints weighted averages of the given metrics.
 
     Args:
@@ -268,6 +272,7 @@ def print_metrics(metrics, weights, prefix='', print_conf_matrix=False):
                  np.percentile(ordered_metric, 50),
                  np.percentile(ordered_metric, 90)))
         average_metrics[metric] = np.average(ordered_metric, weights=ordered_weights)
+
     return average_metrics
 
     # print confusion matrix

@@ -1,4 +1,5 @@
 import os
+import shutil
 from sklearn.model_selection import ParameterGrid
 
 params = {
@@ -14,7 +15,12 @@ params = {
     'learning_rate':  [0.06]
 }
 
+os.remove('results.txt')
 for p in ParameterGrid(params):
-    shutil.rmtree('/tangle_data', ignore_errors=True)
-    os.system("python3 main.py -dataset %s -model %s --num-rounds %s --eval-every %s --clients-per-round %s --num-tips %s --sample-size %s --reference-avg-top %s --target-accuracy %s -lr %s" %
-        (p['dataset'], p['model'], p['num_rounds'], p['eval_every'], p['clients_per_round'], p['num_tips'], p['sample_size'], p['reference_avg_top'], p['target_accuracy'], p['learning_rate']))
+    os.system('rm -rf tangle_data')
+    command = "python3 main.py -dataset %s -model %s --num-rounds %s --eval-every %s --clients-per-round %s --num-tips %s --sample-size %s --reference-avg-top %s --target-accuracy %s -lr %s"
+    parameters = (p['dataset'], p['model'], p['num_rounds'], p['eval_every'], p['clients_per_round'], p['num_tips'], p['sample_size'], p['reference_avg_top'], p['target_accuracy'], p['learning_rate'])
+    command = command % parameters
+    with open('results.txt', 'a+') as file:
+        file.write('\n\n' + command + '\n')
+    os.system(command)
