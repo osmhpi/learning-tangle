@@ -42394,7 +42394,7 @@
   var loadTangle = exports.loadTangle = async function loadTangle(_ref) {
     var iteration = _ref.iteration;
 
-    var res = await fetch('/tangle_data/tangle_10_clients_' + iteration + '.json');
+    var res = await fetch('/tangle_data/tangle_' + iteration + '.json');
     var data = await res.json();
 
     var nodes = data.nodes.map(function (x) {
