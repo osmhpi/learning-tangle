@@ -23,10 +23,10 @@ class Node:
           return [self.tangle.transactions[self.tangle.genesis] for i in range(SELECTED_TIPS)]
       tips = selector.tip_selection(sample_size)
 
-      no_dups = []
-      [no_dups.append(x) for x in tips if x not in no_dups]
+      no_dups = set(tips)
       if len(no_dups) >= num_tips:
           tips = no_dups
+
       tip_txs = [self.tangle.transactions[tip] for tip in tips]
 
       # Find best tips

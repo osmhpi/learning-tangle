@@ -75,7 +75,7 @@ class Tangle:
       with open(f'tangle_data/tangle_{tangle_name}.json', 'r') as tanglefile:
           t = json.load(tanglefile)
 
-      transactions = {n['name']: Transaction(None, set(n['parents']), n['name'], n['time'], n['malicious']) for n in t['nodes']}
+      transactions = {n['name']: Transaction(None, set(n['parents']), n['name'], n['time'], n['malicious'] if 'malicious' in n else False) for n in t['nodes']}
       tangle = cls(transactions, t['genesis'])
       tangle.name = tangle_name
       return tangle
