@@ -17,7 +17,7 @@ class Tangle:
         self.genesis = genesis
         if current_process().name == 'MainProcess':
             os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-            self.process_pool = Pool(10)
+            self.process_pool = Pool(2)
 
     def add_transaction(self, tip):
         self.transactions[tip.name()] = tip
