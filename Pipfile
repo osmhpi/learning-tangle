@@ -9,6 +9,7 @@ verify_ssl = true
 tensorflow = "~=1.13"
 numpy = "*"
 pandas = "==0.24.2"
+sklearn = "*"
 
 [requires]
 python_version = "3.7"
