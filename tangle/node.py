@@ -21,6 +21,10 @@ class Node:
 
       if len(self.tangle.transactions) < num_tips:
           return [self.tangle.transactions[self.tangle.genesis] for i in range(SELECTED_TIPS)]
+
+      if self.poison_type != PoisonType.NONE:
+          sample_size = num_tips
+
       tips = selector.tip_selection(sample_size)
 
       no_dups = set(tips)
@@ -29,13 +33,11 @@ class Node:
 
       tip_txs = [self.tangle.transactions[tip] for tip in tips]
 
-      if self.poison_type != PoisonType.NONE:
-          sample_size = num_tips
 
       # Find best tips
       if num_tips < sample_size:
-        #   print(len(list(filter(lambda tip: tip.malicious, tip_txs))), "of", len(tip_txs), "found tips were malicous")
-        # Choose tips with lowest test loss
+          #   print(len(list(filter(lambda tip: tip.malicious, tip_txs))), "of", len(tip_txs), "found tips were malicous")
+          # Choose tips with lowest test loss
           tip_losses = []
           loss_cache = {}
           for tip in tip_txs:
@@ -48,7 +50,7 @@ class Node:
                   loss_cache[tip.id] = loss
           best_tips = sorted(tip_losses, key=lambda tup: tup[1], reverse=False)[:num_tips]
           tip_txs = [tup[0] for tup in best_tips]
-        #   print(len(list(filter(lambda tip: tip.malicious, tip_txs))), "of", len(tip_txs), "selected tips were malicous")
+      #   print(len(list(filter(lambda tip: tip.malicious, tip_txs))), "of", len(tip_txs), "selected tips were malicous")
 
       return tip_txs
 
