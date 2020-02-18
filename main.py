@@ -273,16 +273,17 @@ def print_metrics(metrics, weights, num_round, prefix='', print_conf_matrix=Fals
                  np.percentile(ordered_metric, 90)))
         average_metrics[metric] = np.average(ordered_metric, weights=ordered_weights)
 
-    return average_metrics
-
     # print confusion matrix
     if print_conf_matrix:
         if 'conf_matrix' in metric_names:
             full_conf_matrix = sum([metrics[c]['conf_matrix'] for c in sorted(metrics)])
-            print('Misclassification percentage: %.2f%%' % (full_conf_matrix[FLIP_FROM_CLASS, FLIP_TO_CLASS] / np.sum(full_conf_matrix[FLIP_FROM_CLASS]) * 100))
+            misclassification = full_conf_matrix[FLIP_FROM_CLASS, FLIP_TO_CLASS] / np.sum(full_conf_matrix[FLIP_FROM_CLASS]) * 100
+            average_metrics['misclassification'] = misclassification
+            print('Misclassification percentage: %.2f%%' % misclassification)
             #print(full_conf_matrix)
             np.savetxt('conf_matrix.txt', full_conf_matrix, fmt='%4u')
 
+    return average_metrics
 
 
 if __name__ == '__main__':
