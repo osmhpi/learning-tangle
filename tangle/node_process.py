@@ -75,11 +75,13 @@ def test_single(u, g, flops, seed, train_data, eval_data, tangle_name, set_to_us
 
     tangle = Tangle.fromfile(tangle_name)
     node = Node(client, tangle)
-    reference_txs, reference = node.obtain_reference_params()
+    args = parse_args()
+    reference_txs, reference, reference_poison_score = node.obtain_reference_params(avg_top=args.reference_avg_top)
     node.client.model.set_params(reference)
     metrics = node.client.test(set_to_use)
 
     metrics['consensus_round'] = np.average([tangle.transactions[tx].tag for tx in reference_txs])
+    metrics['consensus_poisoning'] = reference_poison_score
 
     metrics['norm'] = 0
     parents = [tangle.transactions[tx].parents for tx in reference_txs]

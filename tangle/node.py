@@ -88,6 +88,16 @@ class Node:
 
       return {tx: len(compute_approved_transactions(tx)) for tx in transactions}
 
+  def compute_poisoning_score(self, transactions, approved_transactions_cache={}):
+      def compute_approved_transactions(transaction):
+          if transaction not in approved_transactions_cache:
+              result = set([transaction]).union(*[compute_approved_transactions(parent) for parent in self.tangle.transactions[transaction].parents])
+              approved_transactions_cache[transaction] = result
+
+          return approved_transactions_cache[transaction]
+
+      return {tx: int(self.tangle.transactions[tx].malicious) + sum([self.tangle.transactions[transaction].malicious for transaction in compute_approved_transactions(tx)]) for tx in transactions}
+
   def obtain_reference_params(self, avg_top=1, selector=None):
       # Establish the 'current best'/'reference' weights from the tangle
 
@@ -100,19 +110,24 @@ class Node:
       # 2. Compute cumulative score for transactions
       # (i.e. how many other transactions does a given transaction indirectly approve?)
       keys = [x for x in self.tangle.transactions]
-      scores = self.compute_cumulative_score(keys, approved_transactions_cache=approved_transactions_cache)  # Todo: Reuse approved_transactions_cache from compute_confidence
+      scores = self.compute_cumulative_score(keys, approved_transactions_cache=approved_transactions_cache)
+
+      # How many directly or indirectly approved transactions are poisonous
+      poison_scores = self.compute_poisoning_score(keys, approved_transactions_cache=approved_transactions_cache)
+      poison_percentages = {tx: poison_scores[tx]/scores[tx] for tx in keys}
 
       # 3. For the top 100 transactions, compute the average
       best = sorted(
           {tx: scores[tx] * transaction_confidence[tx] for tx in keys}.items(),
           key=lambda kv: kv[1], reverse=True
       )[:avg_top]
-      return [elem[0] for elem in best], self.average_model_params(*[self.tangle.transactions[elem[0]].load_weights() for elem in best])
+      reference_txs = [elem[0] for elem in best]
+      reference_params = self.average_model_params(*[self.tangle.transactions[elem].load_weights() for elem in reference_txs])
+      reference_poison_score = np.mean([poison_percentages[elem] for elem in reference_txs])
+      return reference_txs, reference_params, reference_poison_score
 
   def average_model_params(self, *params):
-    s = sum(params)
     return sum(params) / len(params)
-    #return [np.array(p).mean(axis=0) for p in zip(params)]
 
   def process_next_batch(self, num_epochs, batch_size, num_tips=2, sample_size=2, reference_avg_top=1):
     # if self.poison_type == PoisonType.NONE:
@@ -121,7 +136,7 @@ class Node:
     #     selector = MaliciousTipSelector(self.tangle)
 
     # Compute reference metrics
-    reference_txs, reference = self.obtain_reference_params(avg_top=reference_avg_top,selector=selector)
+    reference_txs, reference, _ = self.obtain_reference_params(avg_top=reference_avg_top, selector=selector)
     self.client.model.set_params(reference)
     c_metrics = self.client.test('test')
 
