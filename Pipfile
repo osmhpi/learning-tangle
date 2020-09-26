@@ -6,7 +6,7 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-tensorflow = "~=1.13"
+tensorflow = "~=1.15"
 numpy = "*"
 pandas = "==0.24.2"
 sklearn = "*"
